@@ -172,7 +172,7 @@ class NodeStore:
 		if cid is None, returns an empty MST node
 		"""
 		if cid is None:
-			return MSTNode.empty_root()
+			return self.put(MSTNode.empty_root())
 		
 		return MSTNode.deserialise(self.bs.get(bytes(cid)))
 	
@@ -182,28 +182,31 @@ class NodeStore:
 		return node # this is convenient
 
 
-
-class MST:
+class NodeWrangler:
+	"""
+	NodeWrangler is where core MST transformation ops are implemented, backed
+	by a NodeStore
+	"""
 	ns: NodeStore
-	root: CID
 
-	def __init__(self, ns: NodeStore, root: Optional[CID]=None) -> None:
+	def __init__(self, ns: NodeStore) -> None:
 		self.ns = ns
-		if root is None:
-			root = ns.put(MSTNode.empty_root()).cid
-		self.root = root
-	
-	def put(self, key: str, val: CID):
-		self.root = self._put(key, val)
-	
-	def delete(self, key: str):
-		self.root = self._delete(key)
 
-	def _put(self, key: str, val: CID) -> CID:
-		root = ns.get(self.root)
+	def put(self, root_cid: CID, key: str, val: CID) -> CID:
+		root = ns.get(root_cid)
 		if root.is_empty(): # special case for empty tree
 			return self._put_here(root, key, val)
 		return self._put_recursive(root, key, val, MSTNode.key_height(key), root.height)
+
+	def delete(self, root_cid: CID, key: str) -> CID:
+		root = ns.get(root_cid)
+
+		# Note: the seemingly redundant outer .get().cid is required to transform
+		# a None cid into the cid representing an empty node (we could maybe find a more elegant
+		# way of doing this...)
+		return self.ns.get(self._squash_top(self._delete_recursive(root, key, MSTNode.key_height(key), root.height))).cid
+
+
 
 	def _put_here(self, node: MSTNode, key: str, val: CID) -> CID:
 		i = node.gte_index(key)
@@ -278,20 +281,14 @@ class MST:
 			return node_cid
 		return self._squash_top(node.subtrees[0])
 
-	def _delete(self, key: str) -> CID:
-		root = ns.get(self.root)
-		# XXX: handle empty tree result case
-		return self._squash_top(self._delete_recursive(root, key, MSTNode.key_height(key), root.height))
-
-
 	def _delete_recursive(self, node: MSTNode, key: str, key_height: int, tree_height: int) -> Optional[CID]:
 		if key_height > tree_height: # the key cannot possibly be in this tree, no change needed
-			return node.cid
+			return node._to_optional()
 		
 		i = node.gte_index(key)
 		if key_height < tree_height: # the key must be deleted from a subtree
 			if node.subtrees[i] is None:
-				return node.cid # the key cannot be in this subtree, no change needed
+				return node._to_optional() # the key cannot be in this subtree, no change needed
 			return self.ns.put(MSTNode(
 				keys=node.keys,
 				vals=node.vals,
@@ -304,7 +301,7 @@ class MST:
 		
 		i = node.gte_index(key)
 		if i == len(node.keys) or node.keys[i] != key:
-			return node.cid # key already not present
+			return node._to_optional() # key already not present
 		
 		assert(node.keys[i] == key) # sanity check (should always be true)
 
@@ -333,9 +330,6 @@ class MST:
 				),
 			 ) + right.subtrees[1:]
 		))._to_optional()
-
-	def __repr__(self):
-		return self.pretty(self.root)
 	
 	def pretty(self, node_cid: Optional[CID]) -> str:
 		if node_cid is None:
@@ -357,19 +351,24 @@ if __name__ == "__main__":
 		commit_obj = dag_cbor.decode(bs.get(bytes(bs.car_roots[0])))
 		mst_root: CID = commit_obj["data"]
 		ns = NodeStore(bs)
-		mst = MST(ns, mst_root)
+		mst = NodeWrangler(ns, mst_root)
 		print(mst)
 	else:
 		bs = MemoryBlockStore()
 		ns = NodeStore(bs)
-		mst = MST(ns)
-		print(mst)
-		mst.root = mst._put("hello", hash_to_cid(b"blah"))
-		print(mst)
-		mst.root = mst._put("foo", hash_to_cid(b"bar"))
-		print(mst)
-		mst.root = mst._put("bar", hash_to_cid(b"bat"))
-		print(mst)
-		mst.root = mst._delete("foo")
-		mst.root = mst._delete("hello")
-		print(mst)
+		mst = NodeWrangler(ns)
+		root = ns.get(None).cid
+		print(mst.pretty(root))
+		root = mst.put(root, "hello", hash_to_cid(b"blah"))
+		print(mst.pretty(root))
+		root = mst.put(root, "foo", hash_to_cid(b"bar"))
+		print(mst.pretty(root))
+		root = mst.put(root, "bar", hash_to_cid(b"bat"))
+		print(mst.pretty(root))
+		root = mst.delete(root, "foo")
+		root = mst.delete(root, "hello")
+		print(mst.pretty(root))
+		root = mst.delete(root, "bar")
+		print(mst.pretty(root))
+		root = mst.delete(root, "bar")
+		print(mst.pretty(root))
