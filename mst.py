@@ -6,7 +6,8 @@ from functools import cached_property
 from more_itertools import ilen
 from itertools import takewhile
 from dataclasses import dataclass
-from typing import Tuple, Self, Optional, Any, Type, Iterable
+from typing import Tuple, Self, Optional, Any, Dict, List, Type, Iterable
+from collections import namedtuple
 
 from util import indent, hash_to_cid
 from blockstore import BlockStore, MemoryBlockStore
@@ -30,6 +31,9 @@ class MSTNode:
 	keys:          (0,    1,    2,    3)
 	vals:          (0,    1,    2,    3)
 	subtrees:   (0,    1,    2,    3,    4)
+
+	If a method is implemented in this class, it's because it's a function/property
+	of a single node, as opposed to a whole tree
 	"""
 	keys: Tuple[str] # collection/rkey
 	vals: Tuple[CID] # record CIDs
@@ -55,6 +59,7 @@ class MSTNode:
 			vals=()
 		)
 
+	# this should maybe not be implemented here?
 	@staticmethod
 	def key_height(key: str) -> int:
 		digest = int.from_bytes(hashlib.sha256(key.encode()).digest(), "big")
@@ -97,7 +102,7 @@ class MSTNode:
 		keys = []
 		vals = []
 		prev_key = b""
-		for e in cbor["e"]: # TODO: make extra sure that these checks are watertight
+		for e in cbor["e"]: # TODO: make extra sure that these checks are watertight wrt non-canonical representations
 			if len(e) != 4: # k, p, t, v
 				raise ValueError("malformed MST node")
 			prefix_len: int = e["p"]
@@ -162,11 +167,15 @@ class NodeStore:
 	for loading and storing MSTNodes
 	"""
 	bs: BlockStore
+	#cache: Dict[Optional[CID], MSTNode]
+	#cache_counts: Dict[Optional[CID], int]
 
 	def __init__(self, bs: BlockStore) -> None:
 		self.bs = bs
+		#self.cache = {}
+		#self.cache_counts = {}
 	
-	# TODO: LRU cache this
+	# TODO: LRU cache this - this package looks ideal: https://github.com/amitdev/lru-dict
 	def get(self, cid: Optional[CID]) -> MSTNode:
 		"""
 		if cid is None, returns an empty MST node
@@ -181,11 +190,31 @@ class NodeStore:
 		self.bs.put(bytes(node.cid), node.serialised)
 		return node # this is convenient
 
+	# MST pretty-printing
+	# this should maybe not be implemented here
+	def pretty(self, node_cid: Optional[CID]) -> str:
+		if node_cid is None:
+			return "<empty>"
+		node = self.get(node_cid)
+		res = f"MSTNode<cid={node.cid.encode("base32")}>(\n{indent(self.pretty(node.subtrees[0]))},\n"
+		for k, v, t in zip(node.keys, node.vals, node.subtrees[1:]):
+			res += f"  {k!r} ({MSTNode.key_height(k)}) -> {v.encode("base32")},\n"
+			res += indent(self.pretty(t)) + ",\n"
+		res += ")"
+		return res
+
 
 class NodeWrangler:
 	"""
 	NodeWrangler is where core MST transformation ops are implemented, backed
 	by a NodeStore
+
+	The external APIs take a CID (the MST root) and return a CID (the new root),
+	while storing any newly created nodes in the NodeStore.
+
+	Neither method should ever fail - deleting a node that doesn't exist is a nop,
+	and adding the same node twice with the same value is also a nop. Callers
+	can detect these cases by seeing if the initial and final CIDs changed.
 	"""
 	ns: NodeStore
 
@@ -330,45 +359,147 @@ class NodeWrangler:
 				),
 			 ) + right.subtrees[1:]
 		))._to_optional()
+
+
+class NodeWalker:
+	"""
+	NodeWalker makes implementing tree diffing and other MST query ops more
+	convenient (but it does not, itself, implement them).
+
+	A NodeWalker starts off at the root of a tree, and can walk along or recurse
+	down into subtrees.
+
+	Walking "off the end" of a subtree brings you back up to its parent.
+
+	At any point in time, the current node is given by node_stack[-1], and its current position
+	within that node is given by idx_stack[-1], which corresponds to a subtree index.
+
+	Recall MSTNode layout:
+
+	keys:  (lkey)  (0,    1,    2,    3)  (rkey)
+	vals:          (0,    1,    2,    3)
+	subtrees:   (0,    1,    2,    3,    4)
+	"""
+	ns: NodeStore
+
+	@dataclass
+	class StackFrame:
+		node: MSTNode # could store CIDs only to save memory, in theory, but not much point
+		lkey: str
+		rkey: str
+		idx: int
+
+	KEY_MIN = "" # string that compares less than all legal key strings
+	KEY_MAX = "\xff" # string that compares greater than all legal key strings
+
+	@dataclass
+	class State:
+		lkey: str
+		lval: Optional[CID]
+		subtree: Optional[CID]
+		rkey: str
+		rval: Optional[CID]
+
+	stack: List[StackFrame]
 	
-	def pretty(self, node_cid: Optional[CID]) -> str:
-		if node_cid is None:
-			return "<empty>"
-		node = self.ns.get(node_cid)
-		res = f"MSTNode<cid={node.cid.encode("base32")}>(\n{indent(self.pretty(node.subtrees[0]))},\n"
-		for k, v, t in zip(node.keys, node.vals, node.subtrees[1:]):
-			res += f"  {k!r} ({MSTNode.key_height(k)}) -> {v.encode("base32")},\n"
-			res += indent(self.pretty(t)) + ",\n"
-		res += ")"
-		return res
+	def __init__(self, ns: NodeStore, root_cid: CID) -> None:
+		self.ns = ns
+		self.stack = [self.StackFrame(
+			node=self.ns.get(root_cid),
+			lkey=self.KEY_MIN,
+			rkey=self.KEY_MAX,
+			idx=0
+		)]
+	
+	@property
+	def frame(self) -> StackFrame:
+		return self.stack[-1]
+
+	@property
+	def lkey(self) -> str:
+		return self.frame.lkey if self.frame.idx == 0 else self.frame.node.keys[self.frame.idx - 1]
+	
+	@property
+	def lval(self) -> Optional[CID]:
+		return None if self.frame.idx == 0 else self.frame.node.vals[self.frame.idx - 1]
+
+	@property
+	def subtree(self) -> Optional[CID]:
+		return self.frame.node.subtrees[self.frame.idx]
+	
+	@property
+	def rkey(self) -> str:
+		return self.frame.rkey if self.frame.idx == len(self.frame.node.keys) else self.frame.node.keys[self.frame.idx]
+	
+	@property
+	def rval(self) -> Optional[CID]:
+		return None if self.frame.idx == len(self.frame.node.vals) else self.frame.node.vals[self.frame.idx]
+
+	@property
+	def final(self) -> bool:
+		return self.subtree is None and self.rkey == NodeWalker.KEY_MAX
+
+	def right(self) -> None:
+		if (self.frame.idx + 1) >= len(self.frame.node.subtrees):
+			# we reached the end of this node, go up a level
+			self.stack.pop()
+			if not self.stack:
+				raise StopIteration # you probably want to check .final instead of hitting this
+			return self.right() # we need to recurse, to skip over empty intermediates on the way back up
+		self.frame.idx += 1
+
+	def down(self) -> None:
+		subtree = self.frame.node.subtrees[self.frame.idx]
+		if subtree is None:
+			raise Exception("oi, you can't recurse here mate")
+
+		self.stack.append(self.StackFrame(
+			node=self.ns.get(subtree),
+			lkey=self.lkey,
+			rkey=self.rkey,
+			idx=0
+		))
+
+def enumerate_mst(ns: NodeStore, root_cid: CID):
+	cur = NodeWalker(ns, root_cid)
+	while not cur.final:
+		while cur.subtree: # recurse down every subtree
+			cur.down()
+		cur.right()
+		print(cur.lkey, "->", cur.lval.encode("base32")) # print the kv pair we just jumped over
 
 
 if __name__ == "__main__":
-	if 0:
+	if 1:
 		from carfile import ReadOnlyCARBlockStore
 		f = open("/home/david/programming/python/bskyclient/retr0id.car", "rb")
 		bs = ReadOnlyCARBlockStore(f)
 		commit_obj = dag_cbor.decode(bs.get(bytes(bs.car_roots[0])))
 		mst_root: CID = commit_obj["data"]
 		ns = NodeStore(bs)
-		mst = NodeWrangler(ns, mst_root)
-		print(mst)
+		#wrangler = NodeWrangler(ns)
+		#print(wrangler)
+		enumerate_mst(ns, mst_root)
 	else:
 		bs = MemoryBlockStore()
 		ns = NodeStore(bs)
-		mst = NodeWrangler(ns)
+		wrangler = NodeWrangler(ns)
 		root = ns.get(None).cid
-		print(mst.pretty(root))
-		root = mst.put(root, "hello", hash_to_cid(b"blah"))
-		print(mst.pretty(root))
-		root = mst.put(root, "foo", hash_to_cid(b"bar"))
-		print(mst.pretty(root))
-		root = mst.put(root, "bar", hash_to_cid(b"bat"))
-		print(mst.pretty(root))
-		root = mst.delete(root, "foo")
-		root = mst.delete(root, "hello")
-		print(mst.pretty(root))
-		root = mst.delete(root, "bar")
-		print(mst.pretty(root))
-		root = mst.delete(root, "bar")
-		print(mst.pretty(root))
+		print(ns.pretty(root))
+		root = wrangler.put(root, "hello", hash_to_cid(b"blah"))
+		print(ns.pretty(root))
+		root = wrangler.put(root, "foo", hash_to_cid(b"bar"))
+		print(ns.pretty(root))
+		root = wrangler.put(root, "bar", hash_to_cid(b"bat"))
+		root = wrangler.put(root, "xyzz", hash_to_cid(b"bat"))
+		print(ns.pretty(root))
+		#exit()
+		enumerate_mst(ns, root)
+		exit()
+		root = wrangler.delete(root, "foo")
+		root = wrangler.delete(root, "hello")
+		print(ns.pretty(root))
+		root = wrangler.delete(root, "bar")
+		print(ns.pretty(root))
+		root = wrangler.delete(root, "bar")
+		print(ns.pretty(root))
