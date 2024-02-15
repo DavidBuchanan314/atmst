@@ -22,7 +22,7 @@ jobs:
           cd ./docs/
           sphinx-apidoc -f -o _apidocs/ ../src/atmst
           make html
-          touch _build/html/.nojekyll # fixes https://github.com/slackapi/python-slack-sdk/issues/819#issuecomment-1132192752
+          touch _build/html/.nojekyll
       - name: Archive generated docs
         uses: actions/upload-artifact@v4
         with:
