@@ -4,19 +4,20 @@ from functools import reduce
 
 from multiformats import CID
 
-from . import MSTNode
+from .node import MSTNode
 from .node_store import NodeStore
 from .node_walker import NodeWalker
 
 
 def record_diff(ns: NodeStore, created: set[CID], deleted: set[CID]) -> Iterable[tuple]:
 	"""
-	Given two sets of MST nodes (for example, the result of `mst_diff`), this
-	returns an iterator of record changes, in one of 3 formats:
+	Given two sets of MST nodes (for example, the result of :meth:`mst_diff`), this
+	returns an iterator of record changes, in one of 3 formats: ::
 
-	("created", key, value)
-	("updated", key, old_value, new_value)
-	("deleted", key, value)
+		("created", key, value)
+		("updated", key, old_value, new_value)
+		("deleted", key, value)
+
 	"""
 	created_kv = reduce(operator.__or__, ({ k: v for k, v in zip(node.keys, node.vals)} for node in map(ns.get_node, created)), {})
 	deleted_kv = reduce(operator.__or__, ({ k: v for k, v in zip(node.keys, node.vals)} for node in map(ns.get_node, deleted)), {})
@@ -32,8 +33,8 @@ def record_diff(ns: NodeStore, created: set[CID], deleted: set[CID]) -> Iterable
 
 def very_slow_mst_diff(ns: NodeStore, root_a: CID, root_b: CID):
 	"""
-	This should return the same result as mst_diff, but it gets there in a very slow
-	yet less error-prone way, so it's useful for testing.
+	This should return the same result as :meth:`mst_diff`, but it gets there in a slow
+	but much more obvious way (enumerating all nodes), so it's useful for testing.
 
 	It's actually faster for smaller trees, but it chokes on trees with thousands of nodes (especially if the NodeStore is slow).
 	"""
@@ -44,9 +45,13 @@ def very_slow_mst_diff(ns: NodeStore, root_a: CID, root_b: CID):
 EMPTY_NODE_CID = MSTNode.empty_root().cid
 
 def mst_diff(ns: NodeStore, root_a: CID, root_b: CID) -> Tuple[Set[CID], Set[CID]]: # created, deleted
+	"""
+	Given two MST root node CIDs, efficiently compute the difference between them, represented as
+	two sets holding the created and deleted MST nodes respectively (referenced by CIDs).
+	"""
 	created = set() # MST nodes in b but not in a
 	deleted = set() # MST nodes in a but not in b
-	mst_diff_recursive(created, deleted, NodeWalker(ns, root_a), NodeWalker(ns, root_b))
+	_mst_diff_recursive(created, deleted, NodeWalker(ns, root_a), NodeWalker(ns, root_b))
 	middle = created & deleted # my algorithm has occasional false-positives
 	#assert(not middle) # this fails
 	#print("middle", len(middle))
@@ -59,9 +64,9 @@ def mst_diff(ns: NodeStore, root_a: CID, root_b: CID) -> Tuple[Set[CID], Set[CID
 		created.add(EMPTY_NODE_CID)
 	return created, deleted
 
-def mst_diff_recursive(created: Set[CID], deleted: Set[CID], a: NodeWalker, b: NodeWalker): # created, deleted
+def _mst_diff_recursive(created: Set[CID], deleted: Set[CID], a: NodeWalker, b: NodeWalker): # created, deleted
 	# the easiest of all cases
-	if a.frame.node.cid == b.frame.node.cid:
+	if a.frame.node == b.frame.node:
 		return # no difference
 	
 	# trivial
@@ -113,11 +118,11 @@ def mst_diff_recursive(created: Set[CID], deleted: Set[CID], a: NodeWalker, b: N
 
 		# the rkeys now match, but the subrees below us might not
 		
-		mst_diff_recursive(created, deleted, a.subtree_walker(), b.subtree_walker())
+		_mst_diff_recursive(created, deleted, a.subtree_walker(), b.subtree_walker())
 
 		# check if we can still go right XXX: do we need to care about the case where one can, but the other can't?
 		# To consider: maybe if I just step a, b will catch up automagically
-		if a.rkey == a.stack[0].rkey and b.rkey == a.stack[0].rkey:
+		if a.rkey == a.stack[0].rkey and b.rkey == b.stack[0].rkey:
 			break
 
 		a.right()

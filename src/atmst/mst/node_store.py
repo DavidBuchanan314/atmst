@@ -4,7 +4,7 @@ from multiformats import CID
 
 from ..blockstore import BlockStore
 from ..util import indent
-from . import MSTNode
+from .node import MSTNode
 
 class NodeStore:
 	"""

@@ -3,7 +3,7 @@ from typing import Tuple, Self, Optional, List
 
 from multiformats import CID
 
-from . import MSTNode
+from .node import MSTNode
 from .node_store import NodeStore
 
 class NodeWalker:
