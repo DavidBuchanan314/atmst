@@ -186,14 +186,14 @@ class NodeStore:
 		if cid is None:
 			return self.put_node(MSTNode.empty_root())
 		
-		res = MSTNode.deserialise(self.bs.get(bytes(cid)))
+		res = MSTNode.deserialise(self.bs.get_block(bytes(cid)))
 		self.cache[cid] = res
 		return res
 	
 	# TODO: also put in cache
 	def put_node(self, node: MSTNode) -> MSTNode:
 		self.cache[node.cid] = node
-		self.bs.put(bytes(node.cid), node.serialised)
+		self.bs.put_block(bytes(node.cid), node.serialised)
 		return node # this is convenient
 
 	# MST pretty-printing
@@ -617,7 +617,7 @@ if __name__ == "__main__":
 		from carfile import ReadOnlyCARBlockStore
 		f = open("/home/david/programming/python/bskyclient/retr0id.car", "rb")
 		bs = OverlayBlockStore(MemoryBlockStore(), ReadOnlyCARBlockStore(f))
-		commit_obj = dag_cbor.decode(bs.get(bytes(bs.lower.car_roots[0])))
+		commit_obj = dag_cbor.decode(bs.get_block(bytes(bs.lower.car_roots[0])))
 		mst_root: CID = commit_obj["data"]
 		ns = NodeStore(bs)
 		wrangler = NodeWrangler(ns)

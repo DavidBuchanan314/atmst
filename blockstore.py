@@ -20,15 +20,15 @@ class BlockStore(ABC):
 	"""
 
 	@abstractmethod
-	def put(self, key: bytes, value: bytes) -> None:
+	def put_block(self, key: bytes, value: bytes) -> None:
 		pass
 
 	@abstractmethod
-	def get(self, key: bytes) -> bytes:
+	def get_block(self, key: bytes) -> bytes:
 		pass
 
 	@abstractmethod
-	def delete(self, key: bytes) -> None:
+	def delete_block(self, key: bytes) -> None:
 		pass
 
 
@@ -41,7 +41,7 @@ class MemoryBlockStore(BlockStore):
 		"""
 		self._state = dict() if state is None else state
 	
-	def put(self, key: bytes, value: bytes) -> None:
+	def put_block(self, key: bytes, value: bytes) -> None:
 		existing_value = self._state.get(key)
 		if existing_value:
 			if existing_value == value:
@@ -49,13 +49,13 @@ class MemoryBlockStore(BlockStore):
 			raise ValueError("block values are immutable")
 		self._state[key] = value
 	
-	def get(self, key: bytes) -> bytes:
+	def get_block(self, key: bytes) -> bytes:
 		value = self._state.get(key)
 		if value is None:
 			raise KeyError("no block matches this key")
 		return value
 	
-	def delete(self, key: bytes) -> None:
+	def delete_block(self, key: bytes) -> None:
 		if key in self._state:
 			del self._state[key]
 
@@ -75,18 +75,18 @@ class SqliteBlockStore(BlockStore):
 			) WITHOUT ROWID;
 		""")
 	
-	def put(self, key: bytes, value: bytes) -> None:
+	def put_block(self, key: bytes, value: bytes) -> None:
 		# XXX: this will fail silently if the key already exists but with a different value
 		# (that should never happen but it'd be nice to have guard rails)
 		self._cur.execute(f"INSERT OR IGNORE INTO {self.table} (block_key, block_val) VALUES (?, ?)", (key, value))
 	
-	def get(self, key: bytes) -> bytes:
+	def get_block(self, key: bytes) -> bytes:
 		row = self._cur.execute(f"SELECT block_val FROM {self.table} WHERE block_key=?", (key,)).fetchone()
 		if row is None:
 			raise KeyError("no block matches this key")
 		return row[0]
 	
-	def delete(self, key: bytes) -> None:
+	def delete_block(self, key: bytes) -> None:
 		self._cur.execute(f"DELETE FROM {self.table} WHERE block_key=?", (key,))
 
 
@@ -100,17 +100,17 @@ class OverlayBlockStore(BlockStore):
 		self.upper = upper
 		self.lower = lower
 	
-	def put(self, key: bytes, value: bytes) -> None:
-		self.upper.put(key, value)
+	def put_block(self, key: bytes, value: bytes) -> None:
+		self.upper.put_block(key, value)
 	
-	def get(self, key: bytes) -> bytes:
+	def get_block(self, key: bytes) -> bytes:
 		try:
-			return self.upper.get(key)
+			return self.upper.get_block(key)
 		except KeyError:
-			return self.lower.get(key)
+			return self.lower.get_block(key)
 	
-	def delete(self, key: bytes) -> None:
-		self.upper.delete(key)
+	def delete_block(self, key: bytes) -> None:
+		self.upper.delete_block(key)
 
 
 
@@ -118,24 +118,24 @@ if __name__ == "__main__":
 	import os
 
 	bs = MemoryBlockStore()
-	bs.put(b"hello", b"world")
+	bs.put_block(b"hello", b"world")
 
-	bs.put(b"hello", b"world") # putting twice is a nop
+	bs.put_block(b"hello", b"world") # putting twice is a nop
 
 	try:
-		bs.put(b"hello", b"foobar")
+		bs.put_block(b"hello", b"foobar")
 		assert(False) # should be unreachable
 	except ValueError:
 		pass
 
-	print("hello ->", bs.get(b"hello"))
+	print("hello ->", bs.get_block(b"hello"))
 
-	bs.delete(b"nothing") # nop
+	bs.delete_block(b"nothing") # nop
 
-	bs.delete(b"hello")
+	bs.delete_block(b"hello")
 
 	try:
-		bs.get(b"hello")
+		bs.get_block(b"hello")
 		assert(False) # should be unreachable
 	except KeyError:
 		pass
@@ -144,17 +144,17 @@ if __name__ == "__main__":
 
 	with sqlite3.connect(TEST_DB) as db:
 		bs = SqliteBlockStore(db)
-		bs.put(b"hello", b"sqlite world")
+		bs.put_block(b"hello", b"sqlite world")
 
 	with sqlite3.connect(TEST_DB) as db:
 		bs = SqliteBlockStore(db)
-		print("hello ->", bs.get(b"hello"))
-		bs.delete(b"hello")
+		print("hello ->", bs.get_block(b"hello"))
+		bs.delete_block(b"hello")
 	
 	try:
 		with sqlite3.connect(TEST_DB) as db:
 			bs = SqliteBlockStore(db)
-			print("hello ->", bs.get(b"hello"))
+			print("hello ->", bs.get_block(b"hello"))
 		assert(False) # should be unreachable
 	except KeyError:
 		pass

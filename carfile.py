@@ -47,10 +47,10 @@ class ReadOnlyCARBlockStore(BlockStore):
 			self.block_offsets[cid] = (start + CID_LENGTH, length - CID_LENGTH)
 			file.seek(start + length)
 	
-	def put(self, key: bytes, value: bytes) -> None:
+	def put_block(self, key: bytes, value: bytes) -> None:
 		raise NotImplementedError("ReadOnlyCARBlockStore does not support put()")
 	
-	def get(self, key: bytes) -> bytes:
+	def get_block(self, key: bytes) -> bytes:
 		offset, length = self.block_offsets[key]
 		self.file.seek(offset)
 		value = self.file.read(length)
@@ -58,14 +58,14 @@ class ReadOnlyCARBlockStore(BlockStore):
 			raise EOFError()
 		return value
 	
-	def delete(self, key: bytes) -> None:
+	def delete_block(self, key: bytes) -> None:
 		raise NotImplementedError("ReadOnlyCARBlockStore does not support delete()")
 
 
 if __name__ == "__main__":
 	f = open("/home/david/programming/python/bskyclient/retr0id.car", "rb")
 	bs = ReadOnlyCARBlockStore(f)
-	commit_obj = dag_cbor.decode(bs.get(bytes(bs.car_roots[0])))
+	commit_obj = dag_cbor.decode(bs.get_block(bytes(bs.car_roots[0])))
 	print(commit_obj)
 	mst_root: CID = commit_obj["data"]
 
