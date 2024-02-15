@@ -1,5 +1,6 @@
 import random
-from mst import mst_diff, very_slow_mst_diff, MemoryBlockStore, NodeStore, NodeWrangler, hash_to_cid
+from atmst.mst import mst_diff, very_slow_mst_diff, NodeStore, NodeWrangler, hash_to_cid
+from atmst.blockstore import MemoryBlockStore
 import time
 
 PERF_BENCH = False
@@ -42,6 +43,6 @@ def random_test():
 
 if __name__ == "__main__":
 	duration = 0
-	for _ in range(1 if PERF_BENCH else 20000):
+	for _ in range(1 if PERF_BENCH else 200):
 		duration += random_test()
 	print("time spent diffing (ms):", duration*1000)

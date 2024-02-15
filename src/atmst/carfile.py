@@ -2,7 +2,7 @@ from typing import Self, Optional, Dict, List, Tuple, BinaryIO
 from multiformats import varint, CID
 import dag_cbor
 
-from blockstore import BlockStore
+from .blockstore import BlockStore
 
 class ReadOnlyCARBlockStore(BlockStore):
 	"""

@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from typing import Tuple, Self, Optional, Any, Dict, List, Set, Type, Iterable
 from collections import namedtuple
 
-from util import indent, hash_to_cid
-from blockstore import BlockStore, MemoryBlockStore, OverlayBlockStore
+from .util import indent, hash_to_cid
+from .blockstore import BlockStore
 
 # tuple helpers
 def tuple_replace_at(original: tuple, i: int, value: Any) -> tuple:
@@ -607,6 +607,8 @@ def mst_diff_recursive(created: Set[CID], deleted: Set[CID], a: NodeWalker, b: N
 
 
 if __name__ == "__main__":
+	from .blockstore import MemoryBlockStore, OverlayBlockStore
+
 	if 0:
 		import sys
 		sys.setrecursionlimit(999999999)

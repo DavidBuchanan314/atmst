@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atmst"
+version = "0.0.1"
+authors = [
+ 	{ name="David Buchanan", email="d@vidbuchanan.co.uk" },
+]
+description = "A Python library for wrangling atproto-flavoured Merkle Search Trees"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+	"Programming Language :: Python :: 3",
+	"License :: OSI Approved :: MIT License",
+	"Operating System :: OS Independent",
+]
+dependencies = [
+	"dag_cbor",
+	"multiformats",
+]
+
+[project.urls]
+Homepage = "https://github.com/DavidBuchanan314/atmst"
+Issues = "https://github.com/DavidBuchanan314/atmst/issues"
