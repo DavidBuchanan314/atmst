@@ -9,7 +9,7 @@ Current status: prototype
 git clone https://github.com/DavidBuchanan314/atmst
 cd atmst
 python3 -m pip install .
-``
+```
 
 dev install:
 
