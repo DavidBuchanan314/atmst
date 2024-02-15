@@ -2,15 +2,15 @@ import hashlib
 import dag_cbor
 import operator
 from multiformats import multihash, CID
-from functools import cached_property
+from functools import cached_property, reduce
 from more_itertools import ilen
 from itertools import takewhile
 from dataclasses import dataclass
-from typing import Tuple, Self, Optional, Any, Dict, List, Type, Iterable
+from typing import Tuple, Self, Optional, Any, Dict, List, Set, Type, Iterable
 from collections import namedtuple
 
 from util import indent, hash_to_cid
-from blockstore import BlockStore, MemoryBlockStore
+from blockstore import BlockStore, MemoryBlockStore, OverlayBlockStore
 
 # tuple helpers
 def tuple_replace_at(original: tuple, i: int, value: Any) -> tuple:
@@ -369,10 +369,7 @@ class NodeWalker:
 	A NodeWalker starts off at the root of a tree, and can walk along or recurse
 	down into subtrees.
 
-	Walking "off the end" of a subtree brings you back up to its parent.
-
-	At any point in time, the current node is given by node_stack[-1], and its current position
-	within that node is given by idx_stack[-1], which corresponds to a subtree index.
+	Walking "off the end" of a subtree brings you back up to its next non-empty parent.
 
 	Recall MSTNode layout:
 
@@ -380,7 +377,8 @@ class NodeWalker:
 	vals:          (0,    1,    2,    3)
 	subtrees:   (0,    1,    2,    3,    4)
 	"""
-	ns: NodeStore
+	KEY_MIN = "" # string that compares less than all legal key strings
+	KEY_MAX = "\xff" # string that compares greater than all legal key strings
 
 	@dataclass
 	class StackFrame:
@@ -389,27 +387,20 @@ class NodeWalker:
 		rkey: str
 		idx: int
 
-	KEY_MIN = "" # string that compares less than all legal key strings
-	KEY_MAX = "\xff" # string that compares greater than all legal key strings
-
-	@dataclass
-	class State:
-		lkey: str
-		lval: Optional[CID]
-		subtree: Optional[CID]
-		rkey: str
-		rval: Optional[CID]
-
+	ns: NodeStore
 	stack: List[StackFrame]
 	
-	def __init__(self, ns: NodeStore, root_cid: CID) -> None:
+	def __init__(self, ns: NodeStore, root_cid: CID, lkey: Optional[str]=KEY_MIN, rkey: Optional[str]=KEY_MAX) -> None:
 		self.ns = ns
 		self.stack = [self.StackFrame(
 			node=self.ns.get(root_cid),
-			lkey=self.KEY_MIN,
-			rkey=self.KEY_MAX,
+			lkey=lkey,
+			rkey=rkey,
 			idx=0
 		)]
+	
+	def subtree_walker(self) -> Self:
+		return NodeWalker(self.ns, self.subtree, self.lkey, self.rkey)
 	
 	@property
 	def frame(self) -> StackFrame:
@@ -427,6 +418,7 @@ class NodeWalker:
 	def subtree(self) -> Optional[CID]:
 		return self.frame.node.subtrees[self.frame.idx]
 	
+	# hmmmm rkey is overloaded here... "right key" not "record key"...
 	@property
 	def rkey(self) -> str:
 		return self.frame.rkey if self.frame.idx == len(self.frame.node.keys) else self.frame.node.keys[self.frame.idx]
@@ -436,8 +428,8 @@ class NodeWalker:
 		return None if self.frame.idx == len(self.frame.node.vals) else self.frame.node.vals[self.frame.idx]
 
 	@property
-	def final(self) -> bool:
-		return self.subtree is None and self.rkey == NodeWalker.KEY_MAX
+	def is_final(self) -> bool:
+		return (not self.stack) or (self.subtree is None and self.rkey == self.stack[0].rkey)
 
 	def right(self) -> None:
 		if (self.frame.idx + 1) >= len(self.frame.node.subtrees):
@@ -459,27 +451,180 @@ class NodeWalker:
 			rkey=self.rkey,
 			idx=0
 		))
+	
+	# everything above here is core tree walking logic
+	# everything below here is helper functions
+
+	def next_kv(self) -> Tuple[str, CID]:
+		while self.subtree: # recurse down every subtree
+			self.down()
+		self.right()
+		return self.lkey, self.lval # the kv pair we just jumped over
+
+	# iterate over every k/v pair in key-sorted order
+	def iter_kv(self):
+		while not self.is_final:
+			yield self.next_kv()
+	
+	# get all mst nodes down and to the right of the current position
+	def iter_node_cids(self):
+		yield self.frame.node.cid
+		while not self.is_final:
+			while self.subtree: # recurse down every subtree
+				self.down()
+				yield self.frame.node.cid
+			self.right()
+
 
 def enumerate_mst(ns: NodeStore, root_cid: CID):
-	cur = NodeWalker(ns, root_cid)
-	while not cur.final:
-		while cur.subtree: # recurse down every subtree
-			cur.down()
-		cur.right()
-		print(cur.lkey, "->", cur.lval.encode("base32")) # print the kv pair we just jumped over
+	for k, v in NodeWalker(ns, root_cid).iter_kv():
+		print(k, "->", v.encode("base32"))
 
+# start inclusive, end exclusive
+def enumerate_mst_range(ns: NodeStore, root_cid: CID, start: str, end: str):
+	cur = NodeWalker(ns, root_cid)
+	while True:
+		while cur.rkey < start:
+			cur.right()
+		if not cur.subtree:
+			break
+		cur.down()
+
+	for k, v, in cur.iter_kv():
+		if k >= end:
+			break
+		print(k, "->", v.encode("base32"))
+
+def record_diff(ns: NodeStore, created: set[CID], deleted: set[CID]):
+	created_kv = reduce(operator.__or__, ({ k: v for k, v in zip(node.keys, node.vals)} for node in map(ns.get, created)), {})
+	deleted_kv = reduce(operator.__or__, ({ k: v for k, v in zip(node.keys, node.vals)} for node in map(ns.get, deleted)), {})
+	for created_key in created_kv.keys() - deleted_kv.keys():
+		yield ("created", created_key, created_kv[created_key].encode("base32"))
+	for updated_key in created_kv.keys() & deleted_kv.keys():
+		v1 = created_kv[updated_key]
+		v2 = deleted_kv[updated_key]
+		if v1 != v2:
+			yield ("updated", updated_key, v1.encode("base32"), v2.encode("base32"))
+	for deleted_key in deleted_kv.keys() - created_kv.keys():
+		yield ("deleted", deleted_key, deleted_kv[deleted_key].encode("base32")) #XXX: encode() is just for debugging
+
+def mst_diff(ns: NodeStore, root_a: CID, root_b: CID) -> Tuple[Set[CID], Set[CID]]: # created_deleted
+	created, deleted = mst_diff_recursive(NodeWalker(ns, root_a), NodeWalker(ns, root_b))
+	middle = created & deleted
+	#assert(not middle) # should be no intersection!!!
+	return created - middle, deleted - middle
+
+def very_slow_mst_diff(ns, root_a: CID, root_b: CID):
+	"""
+	This should return the same result as mst_diff, but it gets there in a very slow
+	yet less error-prone way, so it's useful for testing.
+	"""
+	a_nodes = set(NodeWalker(ns, root_a).iter_node_cids())
+	b_nodes = set(NodeWalker(ns, root_b).iter_node_cids())
+	return b_nodes - a_nodes, a_nodes - b_nodes
+
+def mst_diff_recursive(a: NodeWalker, b: NodeWalker) -> Tuple[Set[CID], Set[CID]]: # created, deleted
+	mst_created = set() # MST nodes in b but not in a
+	mst_deleted = set() # MST nodes in a but not in b
+
+	# the easiest of all cases
+	if a.frame.node.cid == b.frame.node.cid: # includes the case where they're both None
+		return mst_created, mst_deleted # no difference
+	
+	# trivial
+	if a.frame.node.is_empty():
+		mst_created |= set(b.iter_node_cids())
+		return mst_created, mst_deleted
+	
+	# likewise
+	if b.frame.node.is_empty():
+		mst_deleted |= set(a.iter_node_cids())
+		return mst_created, mst_deleted
+	
+	# now we're onto the hard part
+
+	"""
+	theory: most trees that get compared will have lots of shared blocks (which we can skip over, due to identical CIDs)
+	completely different trees will inevitably have to visit every node.
+
+	general idea:
+	1. if one cursor is "behind" the other, catch it up
+	2. when we're matched up, skip over identical subtrees (and recursively diff non-identical subtrees)
+
+	XXX: this seems to work nicely but I'm not sure if it's necessarily efficient for all tree layouts?
+	"""
+
+	# NB: these will end up as false-positives if one tree is a subtree of the other
+	mst_created.add(b.frame.node.cid)
+	mst_deleted.add(a.frame.node.cid)
+
+	while True:
+		# "catch up" cursor a, if it's behind
+		while a.rkey < b.rkey and not a.is_final:
+			if a.subtree: # recurse down every subtree
+				a.down()
+				mst_deleted.add(a.frame.node.cid)
+			else:
+				a.right()
+		
+		# catch up cursor b, likewise
+		while b.rkey < a.rkey and not b.is_final:
+			if b.subtree: # recurse down every subtree
+				b.down()
+				mst_created.add(b.frame.node.cid)
+			else:
+				b.right()
+
+		assert(b.rkey == a.rkey)
+		# the rkeys match, but the subrees below us might not
+		
+		c, d = mst_diff_recursive(a.subtree_walker(), b.subtree_walker())
+		mst_created |= c
+		mst_deleted |= d
+
+		# check if we can still go right XXX: do we need to care about the case where one can, but the other can't?
+		# To consider: maybe if I just step a, b will catch up automagically
+		if a.rkey == a.stack[0].rkey and b.rkey == a.stack[0].rkey:
+			break
+
+		a.right()
+		b.right()
+	
+	return mst_created, mst_deleted
 
 if __name__ == "__main__":
-	if 1:
+	if 0:
+		import sys
+		sys.setrecursionlimit(999999999)
 		from carfile import ReadOnlyCARBlockStore
 		f = open("/home/david/programming/python/bskyclient/retr0id.car", "rb")
-		bs = ReadOnlyCARBlockStore(f)
-		commit_obj = dag_cbor.decode(bs.get(bytes(bs.car_roots[0])))
+		bs = OverlayBlockStore(MemoryBlockStore(), ReadOnlyCARBlockStore(f))
+		commit_obj = dag_cbor.decode(bs.get(bytes(bs.lower.car_roots[0])))
 		mst_root: CID = commit_obj["data"]
 		ns = NodeStore(bs)
-		#wrangler = NodeWrangler(ns)
+		wrangler = NodeWrangler(ns)
 		#print(wrangler)
-		enumerate_mst(ns, mst_root)
+		#enumerate_mst(ns, mst_root)
+		enumerate_mst_range(ns, mst_root, "app.bsky.feed.generator/", "app.bsky.feed.generator/\xff")
+
+		root2 = wrangler.delete(mst_root, "app.bsky.feed.generator/alttext")
+		root2 = wrangler.delete(root2, "app.bsky.feed.like/3kas3fyvkti22")
+		root2 = wrangler.put(root2, "app.bsky.feed.like/3kc3brpic2z2p", hash_to_cid(b"blah"))
+
+		c, d = mst_diff(ns, mst_root, root2)
+		print("CREATED:")
+		for x in c:
+			print("created", x.encode("base32"))
+		print("DELETED:")
+		for x in d:
+			print("deleted", x.encode("base32"))
+
+		for op in record_diff(ns, c, d):
+			print(op)
+		
+		e, f = very_slow_mst_diff(ns, mst_root, root2)
+		assert(e == c)
+		assert(f == d)
 	else:
 		bs = MemoryBlockStore()
 		ns = NodeStore(bs)
@@ -490,11 +635,29 @@ if __name__ == "__main__":
 		print(ns.pretty(root))
 		root = wrangler.put(root, "foo", hash_to_cid(b"bar"))
 		print(ns.pretty(root))
+		root_a = root
 		root = wrangler.put(root, "bar", hash_to_cid(b"bat"))
 		root = wrangler.put(root, "xyzz", hash_to_cid(b"bat"))
+		root = wrangler.delete(root, "foo")
+		print("=============")
+		print(ns.pretty(root_a))
+		print("=============")
 		print(ns.pretty(root))
 		#exit()
+		print("=============")
 		enumerate_mst(ns, root)
+		c, d = mst_diff(ns, root_a, root)
+		print("CREATED:")
+		for x in c:
+			print("created", x.encode("base32"))
+		print("DELETED:")
+		for x in d:
+			print("deleted", x.encode("base32"))
+		
+		e, f = very_slow_mst_diff(ns, root_a, root)
+		assert(e == c)
+		assert(f == d)
+		
 		exit()
 		root = wrangler.delete(root, "foo")
 		root = wrangler.delete(root, "hello")
