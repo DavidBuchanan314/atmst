@@ -167,26 +167,32 @@ class NodeStore:
 	for loading and storing MSTNodes
 	"""
 	bs: BlockStore
-	#cache: Dict[Optional[CID], MSTNode]
+	cache: Dict[Optional[CID], MSTNode] # XXX: this cache will grow forever!
 	#cache_counts: Dict[Optional[CID], int]
 
 	def __init__(self, bs: BlockStore) -> None:
 		self.bs = bs
-		#self.cache = {}
+		self.cache = {}
 		#self.cache_counts = {}
 	
 	# TODO: LRU cache this - this package looks ideal: https://github.com/amitdev/lru-dict
-	def get(self, cid: Optional[CID]) -> MSTNode:
+	def get_node(self, cid: Optional[CID]) -> MSTNode:
+		cached = self.cache.get(cid)
+		if cached:
+			return cached
 		"""
 		if cid is None, returns an empty MST node
 		"""
 		if cid is None:
-			return self.put(MSTNode.empty_root())
+			return self.put_node(MSTNode.empty_root())
 		
-		return MSTNode.deserialise(self.bs.get(bytes(cid)))
+		res = MSTNode.deserialise(self.bs.get(bytes(cid)))
+		self.cache[cid] = res
+		return res
 	
 	# TODO: also put in cache
-	def put(self, node: MSTNode) -> MSTNode:
+	def put_node(self, node: MSTNode) -> MSTNode:
+		self.cache[node.cid] = node
 		self.bs.put(bytes(node.cid), node.serialised)
 		return node # this is convenient
 
@@ -195,7 +201,7 @@ class NodeStore:
 	def pretty(self, node_cid: Optional[CID]) -> str:
 		if node_cid is None:
 			return "<empty>"
-		node = self.get(node_cid)
+		node = self.get_node(node_cid)
 		res = f"MSTNode<cid={node.cid.encode("base32")}>(\n{indent(self.pretty(node.subtrees[0]))},\n"
 		for k, v, t in zip(node.keys, node.vals, node.subtrees[1:]):
 			res += f"  {k!r} ({MSTNode.key_height(k)}) -> {v.encode("base32")},\n"
@@ -222,62 +228,62 @@ class NodeWrangler:
 		self.ns = ns
 
 	def put(self, root_cid: CID, key: str, val: CID) -> CID:
-		root = ns.get(root_cid)
+		root = self.ns.get_node(root_cid)
 		if root.is_empty(): # special case for empty tree
-			return self._put_here(root, key, val)
-		return self._put_recursive(root, key, val, MSTNode.key_height(key), root.height)
+			return self._put_here(root, key, val).cid
+		return self._put_recursive(root, key, val, MSTNode.key_height(key), root.height).cid
 
 	def delete(self, root_cid: CID, key: str) -> CID:
-		root = ns.get(root_cid)
+		root = self.ns.get_node(root_cid)
 
 		# Note: the seemingly redundant outer .get().cid is required to transform
 		# a None cid into the cid representing an empty node (we could maybe find a more elegant
 		# way of doing this...)
-		return self.ns.get(self._squash_top(self._delete_recursive(root, key, MSTNode.key_height(key), root.height))).cid
+		return self.ns.get_node(self._squash_top(self._delete_recursive(root, key, MSTNode.key_height(key), root.height))).cid
 
 
 
-	def _put_here(self, node: MSTNode, key: str, val: CID) -> CID:
+	def _put_here(self, node: MSTNode, key: str, val: CID) -> MSTNode:
 		i = node.gte_index(key)
 
 		# the key is already present!
 		if i < len(node.keys) and node.keys[i] == key:
 			if node.vals[i] == val:
-				return node.cid # we can return our old self if there is no change
-			return self.ns.put(MSTNode(
+				return node # we can return our old self if there is no change
+			return self.ns.put_node(MSTNode(
 				keys=node.keys,
 				vals=tuple_replace_at(node.vals, i, val),
 				subtrees=node.subtrees
-			)).cid
+			))
 		
-		return self.ns.put(MSTNode(
+		return self.ns.put_node(MSTNode(
 			keys=tuple_insert_at(node.keys, i, key),
 			vals=tuple_insert_at(node.vals, i, val),
 			subtrees = node.subtrees[:i] + \
 				self._split_on_key(node.subtrees[i], key) + \
 				node.subtrees[i + 1:],
-		)).cid
+		))
 	
-	def _put_recursive(self, node: MSTNode, key: str, val: CID, key_height: int, tree_height: int) -> CID:
+	def _put_recursive(self, node: MSTNode, key: str, val: CID, key_height: int, tree_height: int) -> MSTNode:
 		if key_height > tree_height: # we need to grow the tree
-			return self.ns.put(self._put_recursive(
+			return self.ns.put_node(self._put_recursive(
 				MSTNode.empty_root(),
 				key, val, key_height, tree_height + 1
-			)).cid
+			))
 		
 		if key_height < tree_height: # we need to look below
 			i = node.gte_index(key)
-			return self.ns.put(MSTNode(
+			return self.ns.put_node(MSTNode(
 				keys=node.keys,
 				vals=node.vals,
 				subtrees=tuple_replace_at(
 					node.subtrees, i,
 					self._put_recursive(
-						self.ns.get(node.subtrees[i]),
+						self.ns.get_node(node.subtrees[i]),
 						key, val, key_height, tree_height - 1
-					)
+					).cid
 				)
-			)).cid
+			))
 		
 		# we can insert here
 		assert(key_height == tree_height)
@@ -286,14 +292,14 @@ class NodeWrangler:
 	def _split_on_key(self, node_cid: Optional[CID], key: str) -> Tuple[Optional[CID], Optional[CID]]:
 		if node_cid is None:
 			return None, None
-		node = ns.get(node_cid)
+		node = self.ns.get_node(node_cid)
 		i = node.gte_index(key)
 		lsub, rsub = self._split_on_key(node.subtrees[i], key)
-		return self.ns.put(MSTNode(
+		return self.ns.put_node(MSTNode(
 			keys=node.keys[:i],
 			vals=node.vals[:i],
 			subtrees=node.subtrees[:i] + (lsub,)
-		))._to_optional(), self.ns.put(MSTNode(
+		))._to_optional(), self.ns.put_node(MSTNode(
 			keys=node.keys[i:],
 			vals=node.vals[i:],
 			subtrees=(rsub,) + node.subtrees[i + 1:],
@@ -303,7 +309,7 @@ class NodeWrangler:
 		"""
 		strip empty nodes from the top of the tree
 		"""
-		node = self.ns.get(node_cid)
+		node = self.ns.get_node(node_cid)
 		if node.keys:
 			return node_cid
 		if node.subtrees[0] is None:
@@ -318,13 +324,13 @@ class NodeWrangler:
 		if key_height < tree_height: # the key must be deleted from a subtree
 			if node.subtrees[i] is None:
 				return node._to_optional() # the key cannot be in this subtree, no change needed
-			return self.ns.put(MSTNode(
+			return self.ns.put_node(MSTNode(
 				keys=node.keys,
 				vals=node.vals,
 				subtrees=tuple_replace_at(
 					node.subtrees,
 					i,
-					self._delete_recursive(self.ns.get(node.subtrees[i]), key, key_height, tree_height - 1)
+					self._delete_recursive(self.ns.get_node(node.subtrees[i]), key, key_height, tree_height - 1)
 				)
 			))._to_optional()
 		
@@ -334,7 +340,7 @@ class NodeWrangler:
 		
 		assert(node.keys[i] == key) # sanity check (should always be true)
 
-		return self.ns.put(MSTNode(
+		return self.ns.put_node(MSTNode(
 			keys=tuple_remove_at(node.keys, i),
 			vals=tuple_remove_at(node.vals, i),
 			subtrees=node.subtrees[:i] + (
@@ -347,9 +353,9 @@ class NodeWrangler:
 			return right_cid # includes the case where left == right == None
 		if right_cid is None:
 			return left_cid
-		left = self.ns.get(left_cid)
-		right = self.ns.get(right_cid)
-		return self.ns.put(MSTNode(
+		left = self.ns.get_node(left_cid)
+		right = self.ns.get_node(right_cid)
+		return self.ns.put_node(MSTNode(
 			keys=left.keys + right.keys,
 			vals=left.vals + right.vals,
 			subtrees=left.subtrees[:-1] + (
@@ -393,7 +399,7 @@ class NodeWalker:
 	def __init__(self, ns: NodeStore, root_cid: CID, lkey: Optional[str]=KEY_MIN, rkey: Optional[str]=KEY_MAX) -> None:
 		self.ns = ns
 		self.stack = [self.StackFrame(
-			node=self.ns.get(root_cid),
+			node=self.ns.get_node(root_cid),
 			lkey=lkey,
 			rkey=rkey,
 			idx=0
@@ -446,7 +452,7 @@ class NodeWalker:
 			raise Exception("oi, you can't recurse here mate")
 
 		self.stack.append(self.StackFrame(
-			node=self.ns.get(subtree),
+			node=self.ns.get_node(subtree),
 			lkey=self.lkey,
 			rkey=self.rkey,
 			idx=0
@@ -496,8 +502,8 @@ def enumerate_mst_range(ns: NodeStore, root_cid: CID, start: str, end: str):
 		print(k, "->", v.encode("base32"))
 
 def record_diff(ns: NodeStore, created: set[CID], deleted: set[CID]):
-	created_kv = reduce(operator.__or__, ({ k: v for k, v in zip(node.keys, node.vals)} for node in map(ns.get, created)), {})
-	deleted_kv = reduce(operator.__or__, ({ k: v for k, v in zip(node.keys, node.vals)} for node in map(ns.get, deleted)), {})
+	created_kv = reduce(operator.__or__, ({ k: v for k, v in zip(node.keys, node.vals)} for node in map(ns.get_node, created)), {})
+	deleted_kv = reduce(operator.__or__, ({ k: v for k, v in zip(node.keys, node.vals)} for node in map(ns.get_node, deleted)), {})
 	for created_key in created_kv.keys() - deleted_kv.keys():
 		yield ("created", created_key, created_kv[created_key].encode("base32"))
 	for updated_key in created_kv.keys() & deleted_kv.keys():
@@ -508,11 +514,21 @@ def record_diff(ns: NodeStore, created: set[CID], deleted: set[CID]):
 	for deleted_key in deleted_kv.keys() - created_kv.keys():
 		yield ("deleted", deleted_key, deleted_kv[deleted_key].encode("base32")) #XXX: encode() is just for debugging
 
+EMPTY_NODE_CID = MSTNode.empty_root().cid
+
 def mst_diff(ns: NodeStore, root_a: CID, root_b: CID) -> Tuple[Set[CID], Set[CID]]: # created_deleted
 	created, deleted = mst_diff_recursive(NodeWalker(ns, root_a), NodeWalker(ns, root_b))
-	middle = created & deleted
-	#assert(not middle) # should be no intersection!!!
-	return created - middle, deleted - middle
+	middle = created & deleted # my algorithm has occasional false-positives
+	#assert(not middle) # this fails
+	#print("middle", len(middle))
+	created -= middle
+	deleted -= middle
+	# special case: if one of the root nodes was empty
+	if root_a == EMPTY_NODE_CID and root_b != EMPTY_NODE_CID:
+		deleted.add(EMPTY_NODE_CID)
+	if root_b == EMPTY_NODE_CID and root_a != EMPTY_NODE_CID:
+		created.add(EMPTY_NODE_CID)
+	return created, deleted
 
 def very_slow_mst_diff(ns, root_a: CID, root_b: CID):
 	"""
@@ -528,7 +544,7 @@ def mst_diff_recursive(a: NodeWalker, b: NodeWalker) -> Tuple[Set[CID], Set[CID]
 	mst_deleted = set() # MST nodes in a but not in b
 
 	# the easiest of all cases
-	if a.frame.node.cid == b.frame.node.cid: # includes the case where they're both None
+	if a.frame.node.cid == b.frame.node.cid:
 		return mst_created, mst_deleted # no difference
 	
 	# trivial
@@ -559,23 +575,25 @@ def mst_diff_recursive(a: NodeWalker, b: NodeWalker) -> Tuple[Set[CID], Set[CID]
 	mst_deleted.add(a.frame.node.cid)
 
 	while True:
-		# "catch up" cursor a, if it's behind
-		while a.rkey < b.rkey and not a.is_final:
-			if a.subtree: # recurse down every subtree
-				a.down()
-				mst_deleted.add(a.frame.node.cid)
-			else:
-				a.right()
-		
-		# catch up cursor b, likewise
-		while b.rkey < a.rkey and not b.is_final:
-			if b.subtree: # recurse down every subtree
-				b.down()
-				mst_created.add(b.frame.node.cid)
-			else:
-				b.right()
+		while a.rkey != b.rkey: # we need a loop because they might "leapfrog" each other
+			# "catch up" cursor a, if it's behind
+			while a.rkey < b.rkey and not a.is_final:
+				if a.subtree: # recurse down every subtree
+					a.down()
+					mst_deleted.add(a.frame.node.cid)
+				else:
+					a.right()
+			
+			# catch up cursor b, likewise
+			while b.rkey < a.rkey and not b.is_final:
+				if b.subtree: # recurse down every subtree
+					b.down()
+					mst_created.add(b.frame.node.cid)
+				else:
+					b.right()
 
-		assert(b.rkey == a.rkey)
+		#print(a.rkey, a.stack[0].rkey, b.rkey, a.stack[0].rkey)
+		#assert(b.rkey == a.rkey)
 		# the rkeys match, but the subrees below us might not
 		
 		c, d = mst_diff_recursive(a.subtree_walker(), b.subtree_walker())
@@ -629,7 +647,7 @@ if __name__ == "__main__":
 		bs = MemoryBlockStore()
 		ns = NodeStore(bs)
 		wrangler = NodeWrangler(ns)
-		root = ns.get(None).cid
+		root = ns.get_node(None).cid
 		print(ns.pretty(root))
 		root = wrangler.put(root, "hello", hash_to_cid(b"blah"))
 		print(ns.pretty(root))

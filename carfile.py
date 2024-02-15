@@ -71,4 +71,4 @@ if __name__ == "__main__":
 
 	from mst import NodeStore
 	ns = NodeStore(bs)
-	print(ns.get(mst_root))
+	print(ns.get_node(mst_root))
