@@ -13,7 +13,7 @@ jobs:
       - run: echo "The ${{ github.repository }} repository has been cloned to the runner."
       - name: Install dependencies
         run: |
-          python3 -m pip install sphinx
+          python3 -m pip install sphinx sphinx-rtd-theme sphinxcontrib-jquery
       - name: Install atmst python module
         run: |
           cd ${{ github.workspace }}
