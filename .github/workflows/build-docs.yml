@@ -1,6 +1,6 @@
 name: Build Docs
 run-name: ${{ github.actor }} is building docs
-on: [push]
+on: workflow_dispatch
 jobs:
   Build-Docs:
     runs-on: ubuntu-latest
