@@ -26,11 +26,11 @@ def tuple_remove_at(original: tuple, i: int) -> tuple:
 @dataclass(frozen=True) # frozen == immutable == win
 class MSTNode:
 	"""
-	k/v pairs are interleaved between subtrees like so:
+	k/v pairs are interleaved between subtrees like so: ::
 
-	keys:          (0,    1,    2,    3)
-	vals:          (0,    1,    2,    3)
-	subtrees:   (0,    1,    2,    3,    4)
+		keys:          (0,    1,    2,    3)
+		vals:          (0,    1,    2,    3)
+		subtrees:   (0,    1,    2,    3,    4)
 
 	If a method is implemented in this class, it's because it's a function/property
 	of a single node, as opposed to a whole tree

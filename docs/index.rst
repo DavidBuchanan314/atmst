@@ -1,9 +1,6 @@
 Welcome to atmst's documentation!
 =================================
 
-.. automodule:: atmst.mst
-   :members:
-
 .. toctree::
    :maxdepth: 2
    :caption: Contents:

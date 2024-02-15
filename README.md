@@ -16,3 +16,12 @@ dev install:
 ```
 python3 -m pip install -e .
 ```
+
+build the docs:
+
+```
+cd docs/
+sphinx-apidoc -o source/ ../src/atmst
+make html
+# open _build/html/index.html
+```
