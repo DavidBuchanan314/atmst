@@ -377,11 +377,12 @@ class NodeWalker:
 
 	Walking "off the end" of a subtree brings you back up to its next non-empty parent.
 
-	Recall MSTNode layout:
+	Recall MSTNode layout: ::
 
-	keys:  (lkey)  (0,    1,    2,    3)  (rkey)
-	vals:          (0,    1,    2,    3)
-	subtrees:   (0,    1,    2,    3,    4)
+		keys:  (lkey)  (0,    1,    2,    3)  (rkey)
+		vals:          (0,    1,    2,    3)
+		subtrees:   (0,    1,    2,    3,    4)
+
 	"""
 	KEY_MIN = "" # string that compares less than all legal key strings
 	KEY_MAX = "\xff" # string that compares greater than all legal key strings

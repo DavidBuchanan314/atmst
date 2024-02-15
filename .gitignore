@@ -160,4 +160,4 @@ cython_debug/
 #.idea/
 
 # apidoc generated docs
-docs/source/
+docs/_apidocs/

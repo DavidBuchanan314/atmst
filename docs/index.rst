@@ -5,6 +5,8 @@ Welcome to atmst's documentation!
    :maxdepth: 2
    :caption: Contents:
 
+   _apidocs/modules
+
 Indices and tables
 ==================
 
