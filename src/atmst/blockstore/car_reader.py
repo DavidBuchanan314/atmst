@@ -2,7 +2,7 @@ from typing import Self, Optional, Dict, List, Tuple, BinaryIO
 from multiformats import varint, CID
 import dag_cbor
 
-from .blockstore import BlockStore
+from . import BlockStore
 
 class ReadOnlyCARBlockStore(BlockStore):
 	"""
@@ -69,6 +69,6 @@ if __name__ == "__main__":
 	print(commit_obj)
 	mst_root: CID = commit_obj["data"]
 
-	from mst import NodeStore
+	from ..mst import NodeStore
 	ns = NodeStore(bs)
 	print(ns.get_node(mst_root))

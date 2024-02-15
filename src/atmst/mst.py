@@ -608,11 +608,11 @@ def mst_diff_recursive(created: Set[CID], deleted: Set[CID], a: NodeWalker, b: N
 
 if __name__ == "__main__":
 	from .blockstore import MemoryBlockStore, OverlayBlockStore
+	from .blockstore.car_reader import ReadOnlyCARBlockStore
 
 	if 0:
 		import sys
 		sys.setrecursionlimit(999999999)
-		from carfile import ReadOnlyCARBlockStore
 		f = open("/home/david/programming/python/bskyclient/retr0id.car", "rb")
 		bs = OverlayBlockStore(MemoryBlockStore(), ReadOnlyCARBlockStore(f))
 		commit_obj = dag_cbor.decode(bs.get_block(bytes(bs.lower.car_roots[0])))
