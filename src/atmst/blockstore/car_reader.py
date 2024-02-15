@@ -1,4 +1,4 @@
-from typing import Self, Optional, Dict, List, Tuple, BinaryIO
+from typing import Dict, List, Tuple, BinaryIO
 from multiformats import varint, CID
 import dag_cbor
 
@@ -62,6 +62,7 @@ class ReadOnlyCARBlockStore(BlockStore):
 		raise NotImplementedError("ReadOnlyCARBlockStore does not support delete()")
 
 
+"""
 if __name__ == "__main__":
 	f = open("/home/david/programming/python/bskyclient/retr0id.car", "rb")
 	bs = ReadOnlyCARBlockStore(f)
@@ -72,3 +73,4 @@ if __name__ == "__main__":
 	from ..mst import NodeStore
 	ns = NodeStore(bs)
 	print(ns.get_node(mst_root))
+"""

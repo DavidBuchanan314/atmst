@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Self, Optional, Dict, BinaryIO
+from typing import Optional, Dict
 import sqlite3
 
 
@@ -113,7 +113,7 @@ class OverlayBlockStore(BlockStore):
 		self.upper.del_block(key)
 
 
-
+"""
 if __name__ == "__main__":
 	import os
 
@@ -160,3 +160,4 @@ if __name__ == "__main__":
 		pass
 
 	os.remove(TEST_DB) # clean up
+"""
