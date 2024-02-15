@@ -58,7 +58,7 @@ class ReadOnlyCARBlockStore(BlockStore):
 			raise EOFError()
 		return value
 	
-	def delete_block(self, key: bytes) -> None:
+	def del_block(self, key: bytes) -> None:
 		raise NotImplementedError("ReadOnlyCARBlockStore does not support delete()")
 
 

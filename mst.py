@@ -227,13 +227,13 @@ class NodeWrangler:
 	def __init__(self, ns: NodeStore) -> None:
 		self.ns = ns
 
-	def put(self, root_cid: CID, key: str, val: CID) -> CID:
+	def put_record(self, root_cid: CID, key: str, val: CID) -> CID:
 		root = self.ns.get_node(root_cid)
 		if root.is_empty(): # special case for empty tree
 			return self._put_here(root, key, val).cid
 		return self._put_recursive(root, key, val, MSTNode.key_height(key), root.height).cid
 
-	def delete(self, root_cid: CID, key: str) -> CID:
+	def del_record(self, root_cid: CID, key: str) -> CID:
 		root = self.ns.get_node(root_cid)
 
 		# Note: the seemingly redundant outer .get().cid is required to transform
@@ -514,10 +514,21 @@ def record_diff(ns: NodeStore, created: set[CID], deleted: set[CID]):
 	for deleted_key in deleted_kv.keys() - created_kv.keys():
 		yield ("deleted", deleted_key, deleted_kv[deleted_key].encode("base32")) #XXX: encode() is just for debugging
 
+def very_slow_mst_diff(ns, root_a: CID, root_b: CID):
+	"""
+	This should return the same result as mst_diff, but it gets there in a very slow
+	yet less error-prone way, so it's useful for testing.
+	"""
+	a_nodes = set(NodeWalker(ns, root_a).iter_node_cids())
+	b_nodes = set(NodeWalker(ns, root_b).iter_node_cids())
+	return b_nodes - a_nodes, a_nodes - b_nodes
+
 EMPTY_NODE_CID = MSTNode.empty_root().cid
 
 def mst_diff(ns: NodeStore, root_a: CID, root_b: CID) -> Tuple[Set[CID], Set[CID]]: # created_deleted
-	created, deleted = mst_diff_recursive(NodeWalker(ns, root_a), NodeWalker(ns, root_b))
+	created = set() # MST nodes in b but not in a
+	deleted = set() # MST nodes in a but not in b
+	mst_diff_recursive(created, deleted, NodeWalker(ns, root_a), NodeWalker(ns, root_b))
 	middle = created & deleted # my algorithm has occasional false-positives
 	#assert(not middle) # this fails
 	#print("middle", len(middle))
@@ -530,32 +541,22 @@ def mst_diff(ns: NodeStore, root_a: CID, root_b: CID) -> Tuple[Set[CID], Set[CID
 		created.add(EMPTY_NODE_CID)
 	return created, deleted
 
-def very_slow_mst_diff(ns, root_a: CID, root_b: CID):
-	"""
-	This should return the same result as mst_diff, but it gets there in a very slow
-	yet less error-prone way, so it's useful for testing.
-	"""
-	a_nodes = set(NodeWalker(ns, root_a).iter_node_cids())
-	b_nodes = set(NodeWalker(ns, root_b).iter_node_cids())
-	return b_nodes - a_nodes, a_nodes - b_nodes
-
-def mst_diff_recursive(a: NodeWalker, b: NodeWalker) -> Tuple[Set[CID], Set[CID]]: # created, deleted
-	mst_created = set() # MST nodes in b but not in a
-	mst_deleted = set() # MST nodes in a but not in b
-
+def mst_diff_recursive(created: Set[CID], deleted: Set[CID], a: NodeWalker, b: NodeWalker): # created, deleted
 	# the easiest of all cases
 	if a.frame.node.cid == b.frame.node.cid:
-		return mst_created, mst_deleted # no difference
+		return # no difference
 	
 	# trivial
 	if a.frame.node.is_empty():
-		mst_created |= set(b.iter_node_cids())
-		return mst_created, mst_deleted
+		#mst_deleted.add(a.frame.node.cid) # this doesn't work because it might've been a null subtree node
+		created |= set(b.iter_node_cids())
+		return
 	
 	# likewise
 	if b.frame.node.is_empty():
-		mst_deleted |= set(a.iter_node_cids())
-		return mst_created, mst_deleted
+		#mst_created.add(b.frame.node.cid)
+		deleted |= set(a.iter_node_cids())
+		return
 	
 	# now we're onto the hard part
 
@@ -571,8 +572,8 @@ def mst_diff_recursive(a: NodeWalker, b: NodeWalker) -> Tuple[Set[CID], Set[CID]
 	"""
 
 	# NB: these will end up as false-positives if one tree is a subtree of the other
-	mst_created.add(b.frame.node.cid)
-	mst_deleted.add(a.frame.node.cid)
+	created.add(b.frame.node.cid)
+	deleted.add(a.frame.node.cid)
 
 	while True:
 		while a.rkey != b.rkey: # we need a loop because they might "leapfrog" each other
@@ -580,7 +581,7 @@ def mst_diff_recursive(a: NodeWalker, b: NodeWalker) -> Tuple[Set[CID], Set[CID]
 			while a.rkey < b.rkey and not a.is_final:
 				if a.subtree: # recurse down every subtree
 					a.down()
-					mst_deleted.add(a.frame.node.cid)
+					deleted.add(a.frame.node.cid)
 				else:
 					a.right()
 			
@@ -588,17 +589,13 @@ def mst_diff_recursive(a: NodeWalker, b: NodeWalker) -> Tuple[Set[CID], Set[CID]
 			while b.rkey < a.rkey and not b.is_final:
 				if b.subtree: # recurse down every subtree
 					b.down()
-					mst_created.add(b.frame.node.cid)
+					created.add(b.frame.node.cid)
 				else:
 					b.right()
 
-		#print(a.rkey, a.stack[0].rkey, b.rkey, a.stack[0].rkey)
-		#assert(b.rkey == a.rkey)
-		# the rkeys match, but the subrees below us might not
+		# the rkeys now match, but the subrees below us might not
 		
-		c, d = mst_diff_recursive(a.subtree_walker(), b.subtree_walker())
-		mst_created |= c
-		mst_deleted |= d
+		mst_diff_recursive(created, deleted, a.subtree_walker(), b.subtree_walker())
 
 		# check if we can still go right XXX: do we need to care about the case where one can, but the other can't?
 		# To consider: maybe if I just step a, b will catch up automagically
@@ -607,8 +604,7 @@ def mst_diff_recursive(a: NodeWalker, b: NodeWalker) -> Tuple[Set[CID], Set[CID]
 
 		a.right()
 		b.right()
-	
-	return mst_created, mst_deleted
+
 
 if __name__ == "__main__":
 	if 0:
@@ -625,9 +621,9 @@ if __name__ == "__main__":
 		#enumerate_mst(ns, mst_root)
 		enumerate_mst_range(ns, mst_root, "app.bsky.feed.generator/", "app.bsky.feed.generator/\xff")
 
-		root2 = wrangler.delete(mst_root, "app.bsky.feed.generator/alttext")
-		root2 = wrangler.delete(root2, "app.bsky.feed.like/3kas3fyvkti22")
-		root2 = wrangler.put(root2, "app.bsky.feed.like/3kc3brpic2z2p", hash_to_cid(b"blah"))
+		root2 = wrangler.del_record(mst_root, "app.bsky.feed.generator/alttext")
+		root2 = wrangler.del_record(root2, "app.bsky.feed.like/3kas3fyvkti22")
+		root2 = wrangler.put_record(root2, "app.bsky.feed.like/3kc3brpic2z2p", hash_to_cid(b"blah"))
 
 		c, d = mst_diff(ns, mst_root, root2)
 		print("CREATED:")
@@ -649,14 +645,14 @@ if __name__ == "__main__":
 		wrangler = NodeWrangler(ns)
 		root = ns.get_node(None).cid
 		print(ns.pretty(root))
-		root = wrangler.put(root, "hello", hash_to_cid(b"blah"))
+		root = wrangler.put_record(root, "hello", hash_to_cid(b"blah"))
 		print(ns.pretty(root))
-		root = wrangler.put(root, "foo", hash_to_cid(b"bar"))
+		root = wrangler.put_record(root, "foo", hash_to_cid(b"bar"))
 		print(ns.pretty(root))
 		root_a = root
-		root = wrangler.put(root, "bar", hash_to_cid(b"bat"))
-		root = wrangler.put(root, "xyzz", hash_to_cid(b"bat"))
-		root = wrangler.delete(root, "foo")
+		root = wrangler.put_record(root, "bar", hash_to_cid(b"bat"))
+		root = wrangler.put_record(root, "xyzz", hash_to_cid(b"bat"))
+		root = wrangler.del_record(root, "foo")
 		print("=============")
 		print(ns.pretty(root_a))
 		print("=============")

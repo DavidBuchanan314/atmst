@@ -28,7 +28,7 @@ class BlockStore(ABC):
 		pass
 
 	@abstractmethod
-	def delete_block(self, key: bytes) -> None:
+	def del_block(self, key: bytes) -> None:
 		pass
 
 
@@ -55,7 +55,7 @@ class MemoryBlockStore(BlockStore):
 			raise KeyError("no block matches this key")
 		return value
 	
-	def delete_block(self, key: bytes) -> None:
+	def del_block(self, key: bytes) -> None:
 		if key in self._state:
 			del self._state[key]
 
@@ -86,7 +86,7 @@ class SqliteBlockStore(BlockStore):
 			raise KeyError("no block matches this key")
 		return row[0]
 	
-	def delete_block(self, key: bytes) -> None:
+	def del_block(self, key: bytes) -> None:
 		self._cur.execute(f"DELETE FROM {self.table} WHERE block_key=?", (key,))
 
 
@@ -109,8 +109,8 @@ class OverlayBlockStore(BlockStore):
 		except KeyError:
 			return self.lower.get_block(key)
 	
-	def delete_block(self, key: bytes) -> None:
-		self.upper.delete_block(key)
+	def del_block(self, key: bytes) -> None:
+		self.upper.del_block(key)
 
 
 
@@ -130,9 +130,9 @@ if __name__ == "__main__":
 
 	print("hello ->", bs.get_block(b"hello"))
 
-	bs.delete_block(b"nothing") # nop
+	bs.del_block(b"nothing") # nop
 
-	bs.delete_block(b"hello")
+	bs.del_block(b"hello")
 
 	try:
 		bs.get_block(b"hello")
@@ -149,7 +149,7 @@ if __name__ == "__main__":
 	with sqlite3.connect(TEST_DB) as db:
 		bs = SqliteBlockStore(db)
 		print("hello ->", bs.get_block(b"hello"))
-		bs.delete_block(b"hello")
+		bs.del_block(b"hello")
 	
 	try:
 		with sqlite3.connect(TEST_DB) as db:
