@@ -15,4 +15,14 @@ jobs:
         run: |
           cd ${{ github.workspace }}
           python3 -m pip install .
+      - name: Build the docs
+        run: |
+          cd ./docs/
+          sphinx-apidoc -f -o _apidocs/ ../src/atmst
+          make html
+      - name: Archive generated docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-docs
+          path: docs/_build/html/
       - run: echo "This job's status is ${{ job.status }}."
