@@ -1,5 +1,5 @@
 import random
-from atmst import MemoryBlockStore, NodeStore, NodeWrangler, mst_diff, very_slow_mst_diff
+from atmst.all import MemoryBlockStore, NodeStore, NodeWrangler, mst_diff, very_slow_mst_diff
 from atmst.util import hash_to_cid
 import time
 

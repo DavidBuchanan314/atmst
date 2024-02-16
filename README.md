@@ -30,7 +30,7 @@ build the docs:
 
 ```
 cd docs/
-sphinx-apidoc -f -o _apidocs/ ../src/atmst # not sure if this is needed every time
+sphinx-apidoc -f -o _apidocs/ ../src/atmst ../src/atmst/all.py
 make html
 # open _build/html/index.html
 ```

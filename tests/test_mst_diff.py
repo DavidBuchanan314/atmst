@@ -1,6 +1,6 @@
 import unittest
 
-from atmst import MemoryBlockStore, NodeStore, NodeWrangler, mst_diff, very_slow_mst_diff
+from atmst.all import MemoryBlockStore, NodeStore, NodeWrangler, mst_diff, very_slow_mst_diff
 from atmst.mst.node import MSTNode
 from atmst.util import hash_to_cid
 
