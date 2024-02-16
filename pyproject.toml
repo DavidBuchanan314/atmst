@@ -21,8 +21,9 @@ classifiers = [
 	"Operating System :: OS Independent",
 ]
 dependencies = [
-	"dag_cbor",
+	"dag-cbor",
 	"multiformats",
+	"more-itertools",
 ]
 
 [project.urls]
