@@ -47,9 +47,9 @@ class NodeStore:
 		if node_cid is None:
 			return "<empty>"
 		node = self.get_node(node_cid)
-		res = f"MSTNode<cid={node.cid.encode("base32")}>(\n{indent(self.pretty(node.subtrees[0]))},\n"
+		res = f"MSTNode<cid={node.cid.encode('base32')}>(\n{indent(self.pretty(node.subtrees[0]))},\n"
 		for k, v, t in zip(node.keys, node.vals, node.subtrees[1:]):
-			res += f"  {k!r} ({MSTNode.key_height(k)}) -> {v.encode("base32")},\n"
+			res += f"  {k!r} ({MSTNode.key_height(k)}) -> {v.encode('base32')},\n"
 			res += indent(self.pretty(t)) + ",\n"
 		res += ")"
 		return res
