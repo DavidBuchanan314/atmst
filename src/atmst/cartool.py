@@ -111,7 +111,7 @@ COMMANDS = {
 	"info": (print_info, "print CAR header and repo info"),
 	"list": (list_all, "list all records in the CAR (values as CIDs)"),
 	"dump": (dump_all, "dump all records in the CAR (values as JSON)"),
-	"dump_record": (dump_record, "dump a single record keyed on ('collection/rkey')"),
+	"dump_record": (dump_record, "dump a single record, keyed on ('collection/rkey')"),
 	"compact": (compact, "rewrite the whole CAR, dropping any duplicated or unreferenced blocks"),
 }
 

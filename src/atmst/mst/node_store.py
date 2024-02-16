@@ -1,6 +1,8 @@
 from typing import Optional, Dict
+from functools import lru_cache
 
 from multiformats import CID
+from lru import LRU
 
 from ..blockstore import BlockStore
 from ..util import indent
@@ -12,15 +14,12 @@ class NodeStore:
 	for loading and storing MSTNodes
 	"""
 	bs: BlockStore
-	cache: Dict[Optional[CID], MSTNode] # XXX: this cache will grow forever!
-	#cache_counts: Dict[Optional[CID], int]
+	cache: Dict[Optional[CID], MSTNode]
 
 	def __init__(self, bs: BlockStore) -> None:
 		self.bs = bs
-		self.cache = {}
-		#self.cache_counts = {}
+		self.cache = LRU(1024)
 	
-	# TODO: LRU cache this - this package looks ideal: https://github.com/amitdev/lru-dict
 	def get_node(self, cid: Optional[CID]) -> MSTNode:
 		cached = self.cache.get(cid)
 		if cached:
@@ -35,7 +34,6 @@ class NodeStore:
 		self.cache[cid] = res
 		return res
 	
-	# TODO: also put in cache
 	def put_node(self, node: MSTNode) -> MSTNode:
 		self.cache[node.cid] = node
 		self.bs.put_block(bytes(node.cid), node.serialised)

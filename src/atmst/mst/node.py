@@ -8,6 +8,7 @@ from itertools import takewhile
 from dataclasses import dataclass
 from typing import Tuple, Self, Optional
 
+from ..util import hash_to_cid
 
 @dataclass(frozen=True) # frozen == immutable == win
 class MSTNode:
@@ -55,9 +56,7 @@ class MSTNode:
 	# since we're immutable, this can be cached
 	@cached_property
 	def cid(self) -> CID:
-		digest = multihash.digest(self.serialised, "sha2-256")
-		cid = CID("base32", 1, "dag-cbor", digest)
-		return cid
+		return hash_to_cid(self.serialised)
 
 	# likewise
 	@cached_property

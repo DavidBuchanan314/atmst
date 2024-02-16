@@ -41,4 +41,4 @@ class MSTDiffTestCase(unittest.TestCase):
 				self.assertEqual(deleted, reference_deleted)
 
 if __name__ == '__main__':
-	unittest.main()
+	unittest.main(module="tests.test_mst_diff")
