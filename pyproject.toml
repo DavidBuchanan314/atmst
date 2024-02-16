@@ -1,9 +1,6 @@
 [build-system]
 requires = [
 	"setuptools>=61.0",
-	"sphinx",
-	"sphinx-rtd-theme",
-	"sphinxcontrib-jquery",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -25,6 +22,13 @@ dependencies = [
 	"dag-cbor",
 	"multiformats",
 	"more-itertools",
+]
+
+[project.optional-dependencies]
+docs = [
+	"sphinx",
+	"sphinx-rtd-theme",
+	"sphinxcontrib-jquery",
 ]
 
 [project.urls]
