@@ -1,6 +1,7 @@
 [build-system]
 requires = [
 	"setuptools>=61.0",
+	"sphinx",
 	"sphinx-rtd-theme",
 	"sphinxcontrib-jquery",
 ]
