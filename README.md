@@ -14,7 +14,7 @@ cd atmst
 python3 -m pip install .
 ```
 
-dev install:
+dev install: (editable)
 
 ```
 python3 -m pip install -e .

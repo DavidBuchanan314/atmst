@@ -34,3 +34,6 @@ docs = [
 [project.urls]
 Homepage = "https://github.com/DavidBuchanan314/atmst"
 Issues = "https://github.com/DavidBuchanan314/atmst/issues"
+
+[project.scripts]
+cartool = "atmst.cartool:main"

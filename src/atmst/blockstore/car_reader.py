@@ -1,4 +1,6 @@
 from typing import Dict, List, Tuple, BinaryIO
+import hashlib
+
 from multiformats import varint, CID
 import dag_cbor
 
@@ -14,12 +16,13 @@ class ReadOnlyCARBlockStore(BlockStore):
 	car_roots: List[CID]
 	block_offsets: Dict[bytes, Tuple[int, int]] # CID -> (offset, length)
 
-	def __init__(self, file: BinaryIO) -> None:
+	def __init__(self, file: BinaryIO, validate_hashes: bool=True) -> None:
 		"""
 		pre-scan over the whole file, recording the offsets of each block
 		"""
 
 		self.file = file
+		self.validate_hashes = validate_hashes
 		file.seek(0)
 
 		# parse out CAR header
@@ -30,7 +33,9 @@ class ReadOnlyCARBlockStore(BlockStore):
 		header_obj = dag_cbor.decode(header)
 		if header_obj.get("version") != 1:
 			raise ValueError(f"unsupported CAR version ({header_obj.get('version')})")
-		self.car_roots = header_obj["roots"]
+		if len(header_obj["roots"]) != 1:
+			raise ValueError(f"unsupported number of CAR roots ({len(header_obj['roots'])}, expected 1)")
+		self.car_root = header_obj["roots"][0]
 
 		# scan through the CAR to find block offsets
 		self.block_offsets = {}
@@ -56,21 +61,13 @@ class ReadOnlyCARBlockStore(BlockStore):
 		value = self.file.read(length)
 		if len(value) != length:
 			raise EOFError()
+		if self.validate_hashes:
+			if key[:4] != b"\x01\x71\x12\x20":
+				raise ValueError("unsupported CID type")
+			digest = hashlib.sha256(value).digest()
+			if digest != key[4:]:
+				raise ValueError("bad CID hash!")
 		return value
 	
 	def del_block(self, key: bytes) -> None:
 		raise NotImplementedError("ReadOnlyCARBlockStore does not support delete()")
-
-
-"""
-if __name__ == "__main__":
-	f = open("/home/david/programming/python/bskyclient/retr0id.car", "rb")
-	bs = ReadOnlyCARBlockStore(f)
-	commit_obj = dag_cbor.decode(bs.get_block(bytes(bs.car_roots[0])))
-	print(commit_obj)
-	mst_root: CID = commit_obj["data"]
-
-	from ..mst import NodeStore
-	ns = NodeStore(bs)
-	print(ns.get_node(mst_root))
-"""

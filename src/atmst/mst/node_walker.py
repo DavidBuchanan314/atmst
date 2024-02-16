@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Tuple, Self, Optional, List
+from typing import Tuple, Self, Optional, List, Iterable
 
 from multiformats import CID
 
@@ -108,7 +108,7 @@ class NodeWalker:
 		return self.lkey, self.lval # the kv pair we just jumped over
 
 	# iterate over every k/v pair in key-sorted order
-	def iter_kv(self):
+	def iter_kv(self) -> Iterable[Tuple[str, CID]]:
 		while not self.is_final:
 			yield self.next_kv()
 	
@@ -121,22 +121,27 @@ class NodeWalker:
 				yield self.frame.node.cid
 			self.right()
 
+	# start inclusive
+	def iter_kv_range(self, start: str, end: str, end_inclusive: bool=False) -> Iterable[Tuple[str, CID]]:
+		while True:
+			while self.rkey < start:
+				self.right()
+			if not self.subtree:
+				break
+			self.down()
 
-def enumerate_mst(ns: NodeStore, root_cid: CID):
-	for k, v in NodeWalker(ns, root_cid).iter_kv():
-		print(k, "->", v.encode("base32"))
-
-# start inclusive, end exclusive
-def enumerate_mst_range(ns: NodeStore, root_cid: CID, start: str, end: str):
-	cur = NodeWalker(ns, root_cid)
-	while True:
-		while cur.rkey < start:
-			cur.right()
-		if not cur.subtree:
-			break
-		cur.down()
-
-	for k, v, in cur.iter_kv():
-		if k >= end:
-			break
-		print(k, "->", v.encode("base32"))
+		for k, v, in self.iter_kv():
+			if k > end or (not end_inclusive and k == end):
+				break
+			yield k, v
+	
+	def find_value(self, key: str) -> Optional[CID]:
+		while True:
+			while self.rkey < key:
+				self.right()
+			if not self.subtree:
+				break
+			self.down()
+		if self.rkey != key:
+			return None
+		return self.rval
