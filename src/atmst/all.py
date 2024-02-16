@@ -4,7 +4,7 @@ It might be convenient. I might get rid of it.
 """
 
 from .blockstore import BlockStore, MemoryBlockStore
-from .blockstore.car_reader import ReadOnlyCARBlockStore
+from .blockstore.car_file import ReadOnlyCARBlockStore
 from .mst.node_walker import NodeWalker
 from .mst.node_store import NodeStore
 from .mst.node_wrangler import NodeWrangler

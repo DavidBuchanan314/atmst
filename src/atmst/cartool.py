@@ -4,9 +4,9 @@ import base64
 import json
 
 import dag_cbor
-from multiformats import CID
+from multiformats import CID, varint
 
-from .blockstore.car_reader import ReadOnlyCARBlockStore
+from .blockstore.car_file import ReadOnlyCARBlockStore
 from .mst.node_store import NodeStore
 from .mst.node_walker import NodeWalker
 
@@ -74,11 +74,45 @@ def dump_record(car_path: str, key: str):
 		record = dag_cbor.decode(bs.get_block(bytes(val)))
 		print(prettify_record(record))
 
+def write_block(file, data):
+	file.write(varint.encode(len(data)))
+	file.write(data)
+
+def compact(car_in: str, car_out: str):
+	with open(car_in, "rb") as carfile_in:
+		with open(car_out, "wb") as carfile_out:
+			bs = ReadOnlyCARBlockStore(carfile_in)
+
+			new_header = dag_cbor.encode({
+				"version": 1,
+				"roots": [bs.car_root]
+			})
+			write_block(carfile_out, new_header)
+
+			commit_blob = bs.get_block(bytes(bs.car_root))
+			commit = dag_cbor.decode(commit_blob)
+
+			write_block(carfile_out, bytes(bs.car_root) + commit_blob)
+			dedup = {bs.car_root}
+
+			ns = NodeStore(bs)
+			nw = NodeWalker(ns, commit["data"])
+
+			for node in nw.iter_nodes():
+				if node.cid not in dedup:
+					write_block(carfile_out, bytes(node.cid) + node.serialised)
+					dedup.add(node.cid)
+				for v in node.vals:
+					if v not in dedup:
+						write_block(carfile_out, bytes(v) + bs.get_block(bytes(v)))
+						dedup.add(v)
+
 COMMANDS = {
 	"info": (print_info, "print CAR header and repo info"),
 	"list": (list_all, "list all records in the CAR (values as CIDs)"),
 	"dump": (dump_all, "dump all records in the CAR (values as JSON)"),
 	"dump_record": (dump_record, "dump a single record keyed on ('collection/rkey')"),
+	"compact": (compact, "rewrite the whole CAR, dropping any duplicated or unreferenced blocks"),
 }
 
 def print_help():
@@ -86,7 +120,8 @@ def print_help():
 	print("")
 	print("Available commands:")
 	for cmdname, (cmdfn, helptext) in COMMANDS.items():
-		args = [f"<{arg}>" for arg in cmdfn.__code__.co_varnames[:cmdfn.__code__.co_argcount]]
+		fn_args = cmdfn.__code__.co_varnames[:cmdfn.__code__.co_argcount]
+		args = [f"<{arg}>" for arg in fn_args]
 		print(f"{cmdname} {' '.join(args)} : {helptext}")
 
 def main():

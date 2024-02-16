@@ -113,13 +113,17 @@ class NodeWalker:
 			yield self.next_kv()
 	
 	# get all mst nodes down and to the right of the current position
-	def iter_node_cids(self):
-		yield self.frame.node.cid
+	def iter_nodes(self) -> Iterable[MSTNode]:
+		yield self.frame.node
 		while not self.is_final:
 			while self.subtree: # recurse down every subtree
 				self.down()
-				yield self.frame.node.cid
+				yield self.frame.node
 			self.right()
+
+	def iter_node_cids(self) -> Iterable[CID]:
+		for node in self.iter_nodes():
+			yield node.cid
 
 	# start inclusive
 	def iter_kv_range(self, start: str, end: str, end_inclusive: bool=False) -> Iterable[Tuple[str, CID]]:
