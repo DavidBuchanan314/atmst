@@ -1,6 +1,9 @@
 import operator
-from typing import Tuple, Set, Iterable
+from typing import Tuple, Set, Dict, Iterable, Optional
+from enum import Enum
+from dataclasses import dataclass
 from functools import reduce
+import json
 
 from multiformats import CID
 
@@ -8,28 +11,54 @@ from .node import MSTNode
 from .node_store import NodeStore
 from .node_walker import NodeWalker
 
+class DeltaType(Enum):
+	CREATED = 1
+	UPDATED = 2
+	DELETED = 3
 
-def record_diff(ns: NodeStore, created: set[CID], deleted: set[CID]) -> Iterable[tuple]:
+@dataclass
+class RecordDelta:
+	delta_type: DeltaType
+	key: str
+	prior_value: Optional[CID]
+	later_value: Optional[CID]
+
+	def __repr__(self) -> str:
+		prior = "NULL" if self.prior_value is None else self.prior_value.encode('base32')
+		later = "NULL" if self.later_value is None else self.later_value.encode('base32')
+		return f"{self.delta_type.name} {json.dumps(self.key)}: {prior} -> {later}"
+
+def record_diff(ns: NodeStore, created: set[CID], deleted: set[CID]) -> Iterable[RecordDelta]:
 	"""
 	Given two sets of MST nodes (for example, the result of :meth:`mst_diff`), this
-	returns an iterator of record changes, in one of 3 formats: ::
-
-		("created", key, value)
-		("updated", key, old_value, new_value)
-		("deleted", key, value)
-
+	returns an iterator of record changes.
 	"""
-	created_kv = reduce(operator.__or__, ({ k: v for k, v in zip(node.keys, node.vals)} for node in map(ns.get_node, created)), {})
-	deleted_kv = reduce(operator.__or__, ({ k: v for k, v in zip(node.keys, node.vals)} for node in map(ns.get_node, deleted)), {})
+	created_kv: Dict[str, CID] = dict(sum((list(zip(node.keys, node.vals)) for node in map(ns.get_node, created)), []))
+	deleted_kv: Dict[str, CID] = dict(sum((list(zip(node.keys, node.vals)) for node in map(ns.get_node, deleted)), []))
 	for created_key in created_kv.keys() - deleted_kv.keys():
-		yield ("created", created_key, created_kv[created_key].encode("base32"))
+		yield RecordDelta(
+			delta_type=DeltaType.CREATED,
+			key=created_key,
+			prior_value=None,
+			later_value=created_kv[created_key]
+		)
 	for updated_key in created_kv.keys() & deleted_kv.keys():
 		v1 = created_kv[updated_key]
 		v2 = deleted_kv[updated_key]
 		if v1 != v2:
-			yield ("updated", updated_key, v1.encode("base32"), v2.encode("base32"))
+			yield RecordDelta(
+				delta_type=DeltaType.UPDATED,
+				key=updated_key,
+				prior_value=v1,
+				later_value=v2
+			)
 	for deleted_key in deleted_kv.keys() - created_kv.keys():
-		yield ("deleted", deleted_key, deleted_kv[deleted_key].encode("base32")) #XXX: encode() is just for debugging
+		yield RecordDelta(
+			delta_type=DeltaType.DELETED,
+			key=deleted_key,
+			prior_value=None,
+			later_value=deleted_kv[deleted_key]
+		)
 
 def very_slow_mst_diff(ns: NodeStore, root_a: CID, root_b: CID):
 	"""

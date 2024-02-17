@@ -36,10 +36,10 @@ class NodeWalker:
 	ns: NodeStore
 	stack: List[StackFrame]
 	
-	def __init__(self, ns: NodeStore, root_cid: CID, lkey: Optional[str]=KEY_MIN, rkey: Optional[str]=KEY_MAX) -> None:
+	def __init__(self, ns: NodeStore, root_cid: Optional[CID], lkey: Optional[str]=KEY_MIN, rkey: Optional[str]=KEY_MAX) -> None:
 		self.ns = ns
 		self.stack = [self.StackFrame(
-			node=self.ns.get_node(root_cid),
+			node=MSTNode.empty_root() if root_cid is None else self.ns.get_node(root_cid),
 			lkey=lkey,
 			rkey=rkey,
 			idx=0

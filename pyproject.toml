@@ -22,6 +22,7 @@ dependencies = [
 	"dag-cbor",
 	"multiformats",
 	"more-itertools",
+	"lru-dict",
 ]
 
 [project.optional-dependencies]

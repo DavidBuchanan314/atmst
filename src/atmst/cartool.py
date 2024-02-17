@@ -2,13 +2,16 @@ import sys
 import os
 import base64
 import json
+from typing import Tuple, Any
 
 import dag_cbor
 from multiformats import CID, varint
 
 from .blockstore.car_file import ReadOnlyCARBlockStore
+from .blockstore import OverlayBlockStore
 from .mst.node_store import NodeStore
 from .mst.node_walker import NodeWalker
+from .mst.diff import mst_diff, record_diff
 
 
 class ATJsonEncoder(json.JSONEncoder):
@@ -22,37 +25,38 @@ class ATJsonEncoder(json.JSONEncoder):
 def prettify_record(record) -> str:
 	return json.dumps(record, indent="  ", cls=ATJsonEncoder)
 
+def open_car(car_path: str) -> Tuple[ReadOnlyCARBlockStore, Any, NodeWalker]:
+	carfile = open(car_path, "rb")
+	bs = ReadOnlyCARBlockStore(carfile)
+	commit = dag_cbor.decode(bs.get_block(bytes(bs.car_root)))
+	nw = NodeWalker(NodeStore(bs), commit["data"])
+	return bs, commit, nw
+
 def print_info(car_path: str) -> None:
 	print(f"Reading {car_path!r}")
 	print(f"Size on disk: {os.stat(car_path).st_size} bytes")
-	with open(car_path, "rb") as carfile:
-		bs = ReadOnlyCARBlockStore(carfile)
-		print("Total CAR blocks:", len(bs.block_offsets))
-		print("Root CID:", bs.car_root.encode("base32"))
-		commit = dag_cbor.decode(bs.get_block(bytes(bs.car_root)))
-		print()
-		print("ATProto commit info:")
-		print("Version:", commit["version"])
-		if commit["version"] != 3:
-			print(f"Error: only v3 repo format is supported. Got:", commit["version"])
-			return
-		print("Repo:", commit["did"])
-		print("Rev:", commit["rev"])
-		print("Sig:", base64.urlsafe_b64encode(commit["sig"]).decode())
-		print("MST root:", commit["data"].encode("base32"))
+	bs, commit, _ = open_car(car_path)
+	print("Total CAR blocks:", len(bs.block_offsets))
+	print("Root CID:", bs.car_root.encode("base32"))
+	print()
+	print("ATProto commit info:")
+	print("Version:", commit["version"])
+	if commit["version"] != 3:
+		print(f"Error: only v3 repo format is supported. Got:", commit["version"])
+		return
+	print("Repo:", commit["did"])
+	print("Rev:", commit["rev"])
+	print("Sig:", base64.urlsafe_b64encode(commit["sig"]).decode())
+	print("MST root:", commit["data"].encode("base32"))
 
 def print_all_records(car_path: str, to_json: bool) -> None:
-	with open(car_path, "rb") as carfile:
-		bs = ReadOnlyCARBlockStore(carfile)
-		ns = NodeStore(bs)
-		commit = dag_cbor.decode(bs.get_block(bytes(bs.car_root)))
-		nw = NodeWalker(ns, commit["data"])
-		for k, v in nw.iter_kv():
-			if to_json:
-				record = dag_cbor.decode(bs.get_block(bytes(v)))
-				print(f"{k} -> {prettify_record(record)}")
-			else:
-				print(f"{k} -> {v.encode('base32')}")
+	bs, _, nw = open_car(car_path)
+	for k, v in nw.iter_kv():
+		if to_json:
+			record = dag_cbor.decode(bs.get_block(bytes(v)))
+			print(f"{json.dumps(k)} -> {prettify_record(record)}")
+		else:
+			print(f"{json.dumps(k)} -> {v.encode('base32')}")
 
 def list_all(car_path: str):
 	print_all_records(car_path, to_json=False)
@@ -62,50 +66,46 @@ def dump_all(car_path: str):
 	print_all_records(car_path, to_json=True)
 
 def dump_record(car_path: str, key: str):
-	with open(car_path, "rb") as carfile:
-		bs = ReadOnlyCARBlockStore(carfile)
-		ns = NodeStore(bs)
-		commit = dag_cbor.decode(bs.get_block(bytes(bs.car_root)))
-		nw = NodeWalker(ns, commit["data"])
-		val = nw.find_value(key)
-		if val is None:
-			print("Record not found!", file=sys.stderr)
-			sys.exit(-1)
-		record = dag_cbor.decode(bs.get_block(bytes(val)))
-		print(prettify_record(record))
+	bs, _, nw = open_car(car_path)
+	val = nw.find_value(key)
+	if val is None:
+		print("Record not found!", file=sys.stderr)
+		sys.exit(-1)
+	record = dag_cbor.decode(bs.get_block(bytes(val)))
+	print(prettify_record(record))
 
 def write_block(file, data):
 	file.write(varint.encode(len(data)))
 	file.write(data)
 
 def compact(car_in: str, car_out: str):
-	with open(car_in, "rb") as carfile_in:
-		with open(car_out, "wb") as carfile_out:
-			bs = ReadOnlyCARBlockStore(carfile_in)
+	bs, commit, nw = open_car(car_in)
+	with open(car_out, "wb") as carfile_out:
+		new_header = dag_cbor.encode({
+			"version": 1,
+			"roots": [bs.car_root]
+		})
+		write_block(carfile_out, new_header)
+		write_block(carfile_out, bytes(bs.car_root) + dag_cbor.encode(commit))
+		dedup = {bs.car_root}
 
-			new_header = dag_cbor.encode({
-				"version": 1,
-				"roots": [bs.car_root]
-			})
-			write_block(carfile_out, new_header)
+		for node in nw.iter_nodes():
+			if node.cid not in dedup:
+				write_block(carfile_out, bytes(node.cid) + node.serialised)
+				dedup.add(node.cid)
+			for v in node.vals:
+				if v not in dedup:
+					write_block(carfile_out, bytes(v) + bs.get_block(bytes(v)))
+					dedup.add(v)
 
-			commit_blob = bs.get_block(bytes(bs.car_root))
-			commit = dag_cbor.decode(commit_blob)
-
-			write_block(carfile_out, bytes(bs.car_root) + commit_blob)
-			dedup = {bs.car_root}
-
-			ns = NodeStore(bs)
-			nw = NodeWalker(ns, commit["data"])
-
-			for node in nw.iter_nodes():
-				if node.cid not in dedup:
-					write_block(carfile_out, bytes(node.cid) + node.serialised)
-					dedup.add(node.cid)
-				for v in node.vals:
-					if v not in dedup:
-						write_block(carfile_out, bytes(v) + bs.get_block(bytes(v)))
-						dedup.add(v)
+def print_record_diff(car_a: str, car_b: str):
+	bs_a, commit_a, _ = open_car(car_a)
+	bs_b, commit_b, _ = open_car(car_b)
+	bs = OverlayBlockStore(bs_a, bs_b)
+	ns = NodeStore(bs)
+	mst_created, mst_deleted = mst_diff(ns, commit_a["data"], commit_b["data"])
+	for delta in record_diff(ns, mst_created, mst_deleted):
+		print(delta)
 
 COMMANDS = {
 	"info": (print_info, "print CAR header and repo info"),
@@ -113,6 +113,7 @@ COMMANDS = {
 	"dump": (dump_all, "dump all records in the CAR (values as JSON)"),
 	"dump_record": (dump_record, "dump a single record, keyed on ('collection/rkey')"),
 	"compact": (compact, "rewrite the whole CAR, dropping any duplicated or unreferenced blocks"),
+	"diff": (print_record_diff, "list the record diff between two CAR files")
 }
 
 def print_help():
