@@ -98,9 +98,20 @@ def compact(car_in: str, car_out: str):
 					write_block(carfile_out, bytes(v) + bs.get_block(bytes(v)))
 					dedup.add(v)
 
+def _delta_str(a: str, b: str):
+	if a == b:
+		return f"{a} == {b}"
+	return f"{a} -> {b}"
+
 def print_record_diff(car_a: str, car_b: str):
 	bs_a, commit_a, _ = open_car(car_a)
 	bs_b, commit_b, _ = open_car(car_b)
+	print(f"Repo: {_delta_str(commit_a['did'], commit_b['did'])}")
+	print(f"Revision: {_delta_str(commit_a['rev'], commit_b['rev'])}")
+	print(f"Commit: {_delta_str(bs_a.car_root.encode('base32'), bs_b.car_root.encode('base32'))}")
+	print(f"MST root: {_delta_str(commit_a['data'].encode('base32'), commit_b['data'].encode('base32'))}")
+	print("")
+	print("Record delta:")
 	bs = OverlayBlockStore(bs_a, bs_b)
 	ns = NodeStore(bs)
 	mst_created, mst_deleted = mst_diff(ns, commit_a["data"], commit_b["data"])
