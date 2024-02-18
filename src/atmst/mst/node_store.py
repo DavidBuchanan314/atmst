@@ -21,21 +21,28 @@ class NodeStore:
 		self.cache = LRU(1024)
 	
 	def get_node(self, cid: Optional[CID]) -> MSTNode:
-		cached = self.cache.get(cid)
-		if cached:
+		if cached := self.cache.get(cid): # look in our LRU cache first
 			return cached
 		"""
 		if cid is None, returns an empty MST node
 		"""
 		if cid is None:
-			return self.put_node(MSTNode.empty_root())
+			return self.stored_node(MSTNode.empty_root())
 		
-		res = MSTNode.deserialise(self.bs.get_block(bytes(cid)))
-		self.cache[cid] = res
-		return res
+		node_bytes = self.bs.get_block(bytes(cid))
+		node = MSTNode.deserialise(node_bytes)
+
+		# prime the cached_properties since we already know their values
+		object.__setattr__(node, "serialised", node_bytes)
+		object.__setattr__(node, "cid", cid)
+
+		# prime the node cache
+		self.cache[cid] = node
+
+		return node
 	
-	def put_node(self, node: MSTNode) -> MSTNode:
-		self.cache[node.cid] = node
+	def stored_node(self, node: MSTNode) -> MSTNode:
+		self.cache[node.cid] = node # also put it in the LRU cache
 		self.bs.put_block(bytes(node.cid), node.serialised)
 		return node # this is convenient
 

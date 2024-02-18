@@ -2,7 +2,7 @@ import sys
 import os
 import base64
 import json
-from typing import Tuple, Any
+from typing import Tuple, Any, BinaryIO
 
 import dag_cbor
 from multiformats import CID, varint
@@ -25,17 +25,16 @@ class ATJsonEncoder(json.JSONEncoder):
 def prettify_record(record) -> str:
 	return json.dumps(record, indent="  ", cls=ATJsonEncoder)
 
-def open_car(car_path: str) -> Tuple[ReadOnlyCARBlockStore, Any, NodeWalker]:
+def open_car(car_path: str) -> Tuple[ReadOnlyCARBlockStore, dict]:
 	carfile = open(car_path, "rb")
 	bs = ReadOnlyCARBlockStore(carfile)
 	commit = dag_cbor.decode(bs.get_block(bytes(bs.car_root)))
-	nw = NodeWalker(NodeStore(bs), commit["data"])
-	return bs, commit, nw
+	return bs, commit
 
 def print_info(car_path: str) -> None:
 	print(f"Reading {car_path!r}")
 	print(f"Size on disk: {os.stat(car_path).st_size} bytes")
-	bs, commit, _ = open_car(car_path)
+	bs, commit = open_car(car_path)
 	print("Total CAR blocks:", len(bs.block_offsets))
 	print("Root CID:", bs.car_root.encode("base32"))
 	print()
@@ -50,8 +49,8 @@ def print_info(car_path: str) -> None:
 	print("MST root:", commit["data"].encode("base32"))
 
 def print_all_records(car_path: str, to_json: bool) -> None:
-	bs, _, nw = open_car(car_path)
-	for k, v in nw.iter_kv():
+	bs, commit = open_car(car_path)
+	for k, v in NodeWalker(NodeStore(bs), commit["data"]).iter_kv():
 		if to_json:
 			record = dag_cbor.decode(bs.get_block(bytes(v)))
 			print(f"{json.dumps(k)} -> {prettify_record(record)}")
@@ -66,20 +65,20 @@ def dump_all(car_path: str):
 	print_all_records(car_path, to_json=True)
 
 def dump_record(car_path: str, key: str):
-	bs, _, nw = open_car(car_path)
-	val = nw.find_value(key)
+	bs, commit = open_car(car_path)
+	val = NodeWalker(NodeStore(bs), commit["data"]).find_value(key)
 	if val is None:
 		print("Record not found!", file=sys.stderr)
 		sys.exit(-1)
 	record = dag_cbor.decode(bs.get_block(bytes(val)))
 	print(prettify_record(record))
 
-def write_block(file, data):
+def write_block(file: BinaryIO, data: bytes) -> None:
 	file.write(varint.encode(len(data)))
 	file.write(data)
 
 def compact(car_in: str, car_out: str):
-	bs, commit, nw = open_car(car_in)
+	bs, commit = open_car(car_in)
 	with open(car_out, "wb") as carfile_out:
 		new_header = dag_cbor.encode({
 			"version": 1,
@@ -89,7 +88,7 @@ def compact(car_in: str, car_out: str):
 		write_block(carfile_out, bytes(bs.car_root) + dag_cbor.encode(commit))
 		dedup = {bs.car_root}
 
-		for node in nw.iter_nodes():
+		for node in NodeWalker(NodeStore(bs), commit["data"]).iter_nodes():
 			if node.cid not in dedup:
 				write_block(carfile_out, bytes(node.cid) + node.serialised)
 				dedup.add(node.cid)
@@ -104,8 +103,8 @@ def _delta_str(a: str, b: str):
 	return f"{a} -> {b}"
 
 def print_record_diff(car_a: str, car_b: str):
-	bs_a, commit_a, _ = open_car(car_a)
-	bs_b, commit_b, _ = open_car(car_b)
+	bs_a, commit_a = open_car(car_a)
+	bs_b, commit_b = open_car(car_b)
 	print(f"Repo: {_delta_str(commit_a['did'], commit_b['did'])}")
 	print(f"Revision: {_delta_str(commit_a['rev'], commit_b['rev'])}")
 	print(f"Commit: {_delta_str(bs_a.car_root.encode('base32'), bs_b.car_root.encode('base32'))}")

@@ -56,13 +56,13 @@ class NodeWrangler:
 		if i < len(node.keys) and node.keys[i] == key:
 			if node.vals[i] == val:
 				return node # we can return our old self if there is no change
-			return self.ns.put_node(MSTNode(
+			return self.ns.stored_node(MSTNode(
 				keys=node.keys,
 				vals=tuple_replace_at(node.vals, i, val),
 				subtrees=node.subtrees
 			))
 		
-		return self.ns.put_node(MSTNode(
+		return self.ns.stored_node(MSTNode(
 			keys=tuple_insert_at(node.keys, i, key),
 			vals=tuple_insert_at(node.vals, i, val),
 			subtrees = node.subtrees[:i] + \
@@ -72,14 +72,14 @@ class NodeWrangler:
 	
 	def _put_recursive(self, node: MSTNode, key: str, val: CID, key_height: int, tree_height: int) -> MSTNode:
 		if key_height > tree_height: # we need to grow the tree
-			return self.ns.put_node(self._put_recursive(
+			return self.ns.stored_node(self._put_recursive(
 				MSTNode.empty_root(),
 				key, val, key_height, tree_height + 1
 			))
 		
 		if key_height < tree_height: # we need to look below
 			i = node.gte_index(key)
-			return self.ns.put_node(MSTNode(
+			return self.ns.stored_node(MSTNode(
 				keys=node.keys,
 				vals=node.vals,
 				subtrees=tuple_replace_at(
@@ -101,11 +101,11 @@ class NodeWrangler:
 		node = self.ns.get_node(node_cid)
 		i = node.gte_index(key)
 		lsub, rsub = self._split_on_key(node.subtrees[i], key)
-		return self.ns.put_node(MSTNode(
+		return self.ns.stored_node(MSTNode(
 			keys=node.keys[:i],
 			vals=node.vals[:i],
 			subtrees=node.subtrees[:i] + (lsub,)
-		))._to_optional(), self.ns.put_node(MSTNode(
+		))._to_optional(), self.ns.stored_node(MSTNode(
 			keys=node.keys[i:],
 			vals=node.vals[i:],
 			subtrees=(rsub,) + node.subtrees[i + 1:],
@@ -130,7 +130,7 @@ class NodeWrangler:
 		if key_height < tree_height: # the key must be deleted from a subtree
 			if node.subtrees[i] is None:
 				return node._to_optional() # the key cannot be in this subtree, no change needed
-			return self.ns.put_node(MSTNode(
+			return self.ns.stored_node(MSTNode(
 				keys=node.keys,
 				vals=node.vals,
 				subtrees=tuple_replace_at(
@@ -146,7 +146,7 @@ class NodeWrangler:
 		
 		assert(node.keys[i] == key) # sanity check (should always be true)
 
-		return self.ns.put_node(MSTNode(
+		return self.ns.stored_node(MSTNode(
 			keys=tuple_remove_at(node.keys, i),
 			vals=tuple_remove_at(node.vals, i),
 			subtrees=node.subtrees[:i] + (
@@ -161,7 +161,7 @@ class NodeWrangler:
 			return left_cid
 		left = self.ns.get_node(left_cid)
 		right = self.ns.get_node(right_cid)
-		return self.ns.put_node(MSTNode(
+		return self.ns.stored_node(MSTNode(
 			keys=left.keys + right.keys,
 			vals=left.vals + right.vals,
 			subtrees=left.subtrees[:-1] + (
