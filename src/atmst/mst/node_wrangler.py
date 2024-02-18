@@ -6,13 +6,13 @@ from .node import MSTNode
 from .node_store import NodeStore
 
 # tuple helpers
-def tuple_replace_at(original: tuple, i: int, value: Any) -> tuple:
+def _tuple_replace_at(original: tuple, i: int, value: Any) -> tuple:
 	return original[:i] + (value,) + original[i + 1:]
 
-def tuple_insert_at(original: tuple, i: int, value: Any) -> tuple:
+def _tuple_insert_at(original: tuple, i: int, value: Any) -> tuple:
 	return original[:i] + (value,) + original[i:]
 
-def tuple_remove_at(original: tuple, i: int) -> tuple:
+def _tuple_remove_at(original: tuple, i: int) -> tuple:
 	return original[:i] + original[i + 1:]
 
 
@@ -58,13 +58,13 @@ class NodeWrangler:
 				return node # we can return our old self if there is no change
 			return self.ns.stored_node(MSTNode(
 				keys=node.keys,
-				vals=tuple_replace_at(node.vals, i, val),
+				vals=_tuple_replace_at(node.vals, i, val),
 				subtrees=node.subtrees
 			))
 		
 		return self.ns.stored_node(MSTNode(
-			keys=tuple_insert_at(node.keys, i, key),
-			vals=tuple_insert_at(node.vals, i, val),
+			keys=_tuple_insert_at(node.keys, i, key),
+			vals=_tuple_insert_at(node.vals, i, val),
 			subtrees = node.subtrees[:i] + \
 				self._split_on_key(node.subtrees[i], key) + \
 				node.subtrees[i + 1:],
@@ -82,7 +82,7 @@ class NodeWrangler:
 			return self.ns.stored_node(MSTNode(
 				keys=node.keys,
 				vals=node.vals,
-				subtrees=tuple_replace_at(
+				subtrees=_tuple_replace_at(
 					node.subtrees, i,
 					self._put_recursive(
 						self.ns.get_node(node.subtrees[i]),
@@ -133,7 +133,7 @@ class NodeWrangler:
 			return self.ns.stored_node(MSTNode(
 				keys=node.keys,
 				vals=node.vals,
-				subtrees=tuple_replace_at(
+				subtrees=_tuple_replace_at(
 					node.subtrees,
 					i,
 					self._delete_recursive(self.ns.get_node(node.subtrees[i]), key, key_height, tree_height - 1)
@@ -147,8 +147,8 @@ class NodeWrangler:
 		assert(node.keys[i] == key) # sanity check (should always be true)
 
 		return self.ns.stored_node(MSTNode(
-			keys=tuple_remove_at(node.keys, i),
-			vals=tuple_remove_at(node.vals, i),
+			keys=_tuple_remove_at(node.keys, i),
+			vals=_tuple_remove_at(node.vals, i),
 			subtrees=node.subtrees[:i] + (
 				self._merge(node.subtrees[i], node.subtrees[i + 1]),
 			) + node.subtrees[i + 2:]

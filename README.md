@@ -1,6 +1,6 @@
 # atmst
 
-![Static Badge](https://img.shields.io/badge/license-MIT-blue) ![Static Badge](https://img.shields.io/badge/works%20on%20my%20machine-forestgreen) ![Static Badge](https://img.shields.io/badge/test%20coverage-0%25-red) ![Static Badge](https://img.shields.io/badge/docs-maybe%20one%20day-red) ![Static Badge](https://img.shields.io/badge/cryptography-certified%20hand--rolled-yellow) 
+![Static Badge](https://img.shields.io/badge/license-MIT-blue) ![Static Badge](https://img.shields.io/badge/works%20on%20my%20machine-forestgreen) ![Static Badge](https://img.shields.io/badge/test%20coverage-0%25-red) ![Static Badge](https://img.shields.io/badge/docs-exist!-orange) ![Static Badge](https://img.shields.io/badge/cryptography-certified%20hand--rolled-yellow)
 
 A Python library for wrangling atproto-flavoured Merkle Search Trees
 
