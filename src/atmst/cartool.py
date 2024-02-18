@@ -4,10 +4,9 @@ import base64
 import json
 from typing import Tuple, Any, BinaryIO
 
-import dag_cbor
-from multiformats import CID, varint
+from cbrrr import encode_dag_cbor, parse_dag_cbor, CID
 
-from .blockstore.car_file import ReadOnlyCARBlockStore
+from .blockstore.car_file import ReadOnlyCARBlockStore, encode_varint
 from .blockstore import OverlayBlockStore
 from .mst.node_store import NodeStore
 from .mst.node_walker import NodeWalker
@@ -28,7 +27,7 @@ def prettify_record(record) -> str:
 def open_car(car_path: str) -> Tuple[ReadOnlyCARBlockStore, dict]:
 	carfile = open(car_path, "rb")
 	bs = ReadOnlyCARBlockStore(carfile)
-	commit = dag_cbor.decode(bs.get_block(bytes(bs.car_root)))
+	commit = parse_dag_cbor(bs.get_block(bytes(bs.car_root)))
 	return bs, commit
 
 def print_info(car_path: str) -> None:
@@ -52,7 +51,7 @@ def print_all_records(car_path: str, to_json: bool) -> None:
 	bs, commit = open_car(car_path)
 	for k, v in NodeWalker(NodeStore(bs), commit["data"]).iter_kv():
 		if to_json:
-			record = dag_cbor.decode(bs.get_block(bytes(v)))
+			record = parse_dag_cbor(bs.get_block(bytes(v)))
 			print(f"{json.dumps(k)} -> {prettify_record(record)}")
 		else:
 			print(f"{json.dumps(k)} -> {v.encode('base32')}")
@@ -70,22 +69,22 @@ def dump_record(car_path: str, key: str):
 	if val is None:
 		print("Record not found!", file=sys.stderr)
 		sys.exit(-1)
-	record = dag_cbor.decode(bs.get_block(bytes(val)))
+	record = parse_dag_cbor(bs.get_block(bytes(val)))
 	print(prettify_record(record))
 
 def write_block(file: BinaryIO, data: bytes) -> None:
-	file.write(varint.encode(len(data)))
+	file.write(encode_varint(len(data)))
 	file.write(data)
 
 def compact(car_in: str, car_out: str):
 	bs, commit = open_car(car_in)
 	with open(car_out, "wb") as carfile_out:
-		new_header = dag_cbor.encode({
+		new_header = encode_dag_cbor({
 			"version": 1,
 			"roots": [bs.car_root]
 		})
 		write_block(carfile_out, new_header)
-		write_block(carfile_out, bytes(bs.car_root) + dag_cbor.encode(commit))
+		write_block(carfile_out, bytes(bs.car_root) + encode_dag_cbor(commit))
 		dedup = {bs.car_root}
 
 		for node in NodeWalker(NodeStore(bs), commit["data"]).iter_nodes():

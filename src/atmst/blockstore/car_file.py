@@ -1,10 +1,31 @@
 from typing import Dict, List, Tuple, BinaryIO
 import hashlib
 
-from multiformats import varint, CID
-import dag_cbor
+from cbrrr import parse_dag_cbor, CID
 
 from . import BlockStore
+
+# should be equivalent to multiformats.varint.decode(), but not extremely slow for no reason.
+def parse_varint(stream: BinaryIO):
+	n = 0
+	shift = 0
+	while True:
+		val = stream.read(1)
+		if not val:
+			raise ValueError("eof") # match varint.decode()
+		val = val[0]
+		n |= (val & 0x7f) << shift
+		if not val & 0x80:
+			return n
+		shift += 7
+
+def encode_varint(n: int) -> bytes:
+	res = []
+	while n > 0x7f:
+		res.append(0x80 | (n & 0x7f))
+		n >>= 7
+	res.append(n)
+	return bytes(res)
 
 class ReadOnlyCARBlockStore(BlockStore):
 	"""
@@ -26,11 +47,11 @@ class ReadOnlyCARBlockStore(BlockStore):
 		file.seek(0)
 
 		# parse out CAR header
-		header_len = varint.decode(file)
+		header_len = parse_varint(file)
 		header = file.read(header_len)
 		if len(header) != header_len:
 			raise EOFError("not enough CAR header bytes")
-		header_obj = dag_cbor.decode(header)
+		header_obj = parse_dag_cbor(header)
 		if header_obj.get("version") != 1:
 			raise ValueError(f"unsupported CAR version ({header_obj.get('version')})")
 		if len(header_obj["roots"]) != 1:
@@ -41,7 +62,7 @@ class ReadOnlyCARBlockStore(BlockStore):
 		self.block_offsets = {}
 		while True:
 			try:
-				length = varint.decode(file)
+				length = parse_varint(file)
 			except ValueError:
 				break # EOF
 			start = file.tell()

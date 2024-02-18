@@ -1,7 +1,7 @@
 from typing import Optional, Dict
 from functools import lru_cache
 
-from multiformats import CID
+from cbrrr import CID
 from lru import LRU
 
 from ..blockstore import BlockStore

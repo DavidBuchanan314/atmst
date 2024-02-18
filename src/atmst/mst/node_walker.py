@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Tuple, Self, Optional, List, Iterable
 
-from multiformats import CID
+from cbrrr import CID
 
 from .node import MSTNode
 from .node_store import NodeStore

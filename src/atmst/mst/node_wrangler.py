@@ -1,6 +1,6 @@
 from typing import Tuple, Optional, Any
 
-from multiformats import CID
+from cbrrr import CID
 
 from .node import MSTNode
 from .node_store import NodeStore

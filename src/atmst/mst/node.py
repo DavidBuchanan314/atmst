@@ -1,12 +1,12 @@
 import hashlib
-import dag_cbor
 import operator
-from multiformats import multihash, CID
 from functools import cached_property
 from more_itertools import ilen
 from itertools import takewhile
 from dataclasses import dataclass
 from typing import Tuple, Self, Optional
+
+from cbrrr import encode_dag_cbor, parse_dag_cbor, CID
 
 from ..util import hash_to_cid
 
@@ -73,14 +73,14 @@ class MSTNode:
 				"v": value,
 			})
 			prev_key = key_bytes
-		return dag_cbor.encode({
+		return encode_dag_cbor({
 			"e": e,
 			"l": self.subtrees[0]
 		})
 
 	@classmethod
 	def deserialise(cls, data: bytes) -> Self:
-		cbor = dag_cbor.decode(data)
+		cbor = parse_dag_cbor(data)
 		if len(cbor) != 2: # e, l
 			raise ValueError("malformed MST node")
 		subtrees = [cbor["l"]]
