@@ -37,6 +37,18 @@ Nodes
 
 An MST is comprised of one or more Nodes. :py:mod:`atmst` represents Nodes using :meth:`~atmst.mst.node.MSTNode`, an immutable dataclass.
 
-Nodes are ultimately stored in a BlockStore, serialised as `DAG-CBOR <https://ipld.io/docs/codecs/known/dag-cbor/>`_, and the :meth:`~atmst.mst.node_store.NodeStore` class facilitates this. A NodeStore also maintains an LRU cache, mapping CIDs to MSTNode objects, to reduce the impact of BlockStore read latency, hash verification, and deserialisation overheads.
+Nodes are stored in a BlockStore, serialised as `DAG-CBOR <https://ipld.io/docs/codecs/known/dag-cbor/>`_, and the :meth:`~atmst.mst.node_store.NodeStore` class handles this transparently. A NodeStore internally maintains an LRU cache, mapping CIDs to MSTNode objects, to reduce the impacts of BlockStore read latency, hash verification, and deserialisation overheads.
 
-The :meth:`~atmst.mst.node_wrangler.NodeWrangler` class facilitates modifications to MSTs, and the :meth:`~atmst.mst.node_walker.NodeWalker` class facilitates access to MSTs, which the :meth:`~atmst.mst.diff.mst_diff` method makes use of.
+The :meth:`~atmst.mst.node_wrangler.NodeWrangler` class facilitates modifications to MSTs, via the :meth:`~atmst.mst.node_wrangler.NodeWrangler.put_record` and :meth:`~atmst.mst.node_wrangler.NodeWrangler.delete_record` methods. These methods each return a CID reference to the new MST root, with any newly created Nodes tracked internally using a :meth:`~atmst.mst.node_store.NodeStore`.
+
+For reading MSTs, the :meth:`~atmst.mst.node_walker.NodeWalker` class acts as a "cursor" for walking the tree from a given starting point (usually the root), including convenience methods for accessing records by key.
+
+The :meth:`~atmst.mst.diff.mst_diff` method makes use of :meth:`~atmst.mst.node_walker.NodeWalker` internally.
+
+=======
+Recipes
+=======
+
+For some examples of how all these components fit together, check out the source of `cartool.py <https://github.com/DavidBuchanan314/atmst/blob/main/src/atmst/cartool.py>`_.
+
+TODO: Improve this part of the docs!

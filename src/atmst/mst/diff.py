@@ -75,8 +75,9 @@ EMPTY_NODE_CID = MSTNode.empty_root().cid
 
 def mst_diff(ns: NodeStore, root_a: CID, root_b: CID) -> Tuple[Set[CID], Set[CID]]: # created, deleted
 	"""
-	Given two MST root node CIDs, efficiently compute the difference between them, represented as
-	two sets holding the created and deleted MST nodes respectively (referenced by CIDs).
+	XXX: This implementation is not yet ready for prime-time!
+
+	Given two MST root node CIDs, efficiently compute the difference between the two trees. The result is two sets, holding the created and deleted MST nodes respectively (referenced by CIDs).
 	"""
 	created = set() # MST nodes in b but not in a
 	deleted = set() # MST nodes in a but not in b
