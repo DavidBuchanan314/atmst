@@ -1,8 +1,6 @@
-import operator
 from typing import Tuple, Set, Dict, Iterable, Optional
 from enum import Enum
 from dataclasses import dataclass
-from functools import reduce
 import json
 
 from cbrrr import CID

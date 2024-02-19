@@ -8,7 +8,6 @@ from typing import Tuple, Self, Optional
 
 from cbrrr import encode_dag_cbor, parse_dag_cbor, CID
 
-from ..util import hash_to_cid
 
 @dataclass(frozen=True) # frozen == immutable == win
 class MSTNode:
@@ -56,7 +55,7 @@ class MSTNode:
 	# since we're immutable, this can be cached
 	@cached_property
 	def cid(self) -> CID:
-		return hash_to_cid(self.serialised)
+		return CID.cidv1_dag_cbor_sha256_32_from(self.serialised)
 
 	# likewise
 	@cached_property

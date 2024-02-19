@@ -2,12 +2,12 @@ import unittest
 
 from atmst.all import MemoryBlockStore, NodeStore, NodeWrangler, mst_diff, very_slow_mst_diff
 from atmst.mst.node import MSTNode
-from atmst.util import hash_to_cid
+from cbrrr import CID
 
 class MSTDiffTestCase(unittest.TestCase):
 	def setUp(self):
 		keys = []
-		dummy_value = hash_to_cid(b"value")
+		dummy_value = CID.cidv1_dag_cbor_sha256_32_from(b"value")
 		i = 0
 		for height in [0, 1, 0, 2, 0, 1, 0]: # if all these keys are added to a MST, it'll form a perfect binary tree.
 			while True:

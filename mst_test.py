@@ -1,6 +1,6 @@
 import random
 from atmst.all import MemoryBlockStore, NodeStore, NodeWrangler, mst_diff, very_slow_mst_diff
-from atmst.util import hash_to_cid
+from cbrrr import CID
 import time
 
 PERF_BENCH = False
@@ -14,16 +14,16 @@ def random_test():
 	for _ in range(10240 if PERF_BENCH else random.randrange(0, 32)):
 		k = random.randbytes(8).hex()
 		keys.append(k)
-		root = nw.put_record(root, k, hash_to_cid(random.randbytes(8)))
+		root = nw.put_record(root, k, CID.cidv1_dag_cbor_sha256_32_from(random.randbytes(8)))
 	root_a = root
 	for _ in range(8 if PERF_BENCH else random.randrange(0, 8)):
 		# some random additions
-		root = nw.put_record(root, random.randbytes(8).hex(), hash_to_cid(random.randbytes(8)))
+		root = nw.put_record(root, random.randbytes(8).hex(), CID.cidv1_dag_cbor_sha256_32_from(random.randbytes(8)))
 	if keys:
 		# some random modifications
 		for _ in range(4 if PERF_BENCH else random.randrange(0, 4)):
 			for k in random.choice(keys):
-				root = nw.put_record(root, k, hash_to_cid(random.randbytes(8)))
+				root = nw.put_record(root, k, CID.cidv1_dag_cbor_sha256_32_from(random.randbytes(8)))
 		# some random deletions
 		for _ in range(4 if PERF_BENCH else random.randrange(0, 4)):
 			for k in random.choice(keys):
@@ -43,6 +43,6 @@ def random_test():
 
 if __name__ == "__main__":
 	duration = 0
-	for _ in range(1 if PERF_BENCH else 200):
+	for _ in range(1 if PERF_BENCH else 2000):
 		duration += random_test()
 	print("time spent diffing (ms):", duration*1000)
