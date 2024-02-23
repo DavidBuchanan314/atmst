@@ -1,7 +1,7 @@
 from typing import Dict, List, Tuple, BinaryIO
 import hashlib
 
-from cbrrr import parse_dag_cbor, CID
+from cbrrr import decode_dag_cbor, CID
 
 from . import BlockStore
 
@@ -51,7 +51,7 @@ class ReadOnlyCARBlockStore(BlockStore):
 		header = file.read(header_len)
 		if len(header) != header_len:
 			raise EOFError("not enough CAR header bytes")
-		header_obj = parse_dag_cbor(header)
+		header_obj = decode_dag_cbor(header)
 		if header_obj.get("version") != 1:
 			raise ValueError(f"unsupported CAR version ({header_obj.get('version')})")
 		if len(header_obj["roots"]) != 1:

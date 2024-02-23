@@ -6,7 +6,7 @@ from itertools import takewhile
 from dataclasses import dataclass
 from typing import Tuple, Self, Optional
 
-from cbrrr import encode_dag_cbor, parse_dag_cbor, CID
+from cbrrr import encode_dag_cbor, decode_dag_cbor, CID
 
 
 @dataclass(frozen=True) # frozen == immutable == win
@@ -79,7 +79,7 @@ class MSTNode:
 
 	@classmethod
 	def deserialise(cls, data: bytes) -> Self:
-		cbor = parse_dag_cbor(data)
+		cbor = decode_dag_cbor(data)
 		if len(cbor) != 2: # e, l
 			raise ValueError("malformed MST node")
 		subtrees = [cbor["l"]]
