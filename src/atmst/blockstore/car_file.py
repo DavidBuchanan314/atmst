@@ -6,20 +6,24 @@ from cbrrr import decode_dag_cbor, CID
 from . import BlockStore
 
 # should be equivalent to multiformats.varint.decode(), but not extremely slow for no reason.
-def parse_varint(stream: BinaryIO):
+def decode_varint(stream: BinaryIO):
 	n = 0
-	shift = 0
-	while True:
+	for shift in range(0, 63, 7):
 		val = stream.read(1)
 		if not val:
-			raise ValueError("eof") # match varint.decode()
+			raise ValueError("unexpected end of varint input")
 		val = val[0]
 		n |= (val & 0x7f) << shift
 		if not val & 0x80:
+			if shift and not val:
+				raise ValueError("varint not minimally encoded")
 			return n
 		shift += 7
+	raise ValueError("varint too long")
 
 def encode_varint(n: int) -> bytes:
+	if not 0 <= n < 2**63:
+		raise ValueError("integer out of encodable varint range")
 	res = []
 	while n > 0x7f:
 		res.append(0x80 | (n & 0x7f))
@@ -47,7 +51,7 @@ class ReadOnlyCARBlockStore(BlockStore):
 		file.seek(0)
 
 		# parse out CAR header
-		header_len = parse_varint(file)
+		header_len = decode_varint(file)
 		header = file.read(header_len)
 		if len(header) != header_len:
 			raise EOFError("not enough CAR header bytes")
@@ -62,7 +66,7 @@ class ReadOnlyCARBlockStore(BlockStore):
 		self.block_offsets = {}
 		while True:
 			try:
-				length = parse_varint(file)
+				length = decode_varint(file)
 			except ValueError:
 				break # EOF
 			start = file.tell()
