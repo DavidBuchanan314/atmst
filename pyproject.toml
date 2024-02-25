@@ -19,7 +19,7 @@ classifiers = [
 	"Operating System :: OS Independent",
 ]
 dependencies = [
-	"cbrrr@git+https://github.com/DavidBuchanan314/dag-cbrrr",
+	"cbrrr==0.0.1",
 	"more-itertools",
 	"lru-dict",
 ]

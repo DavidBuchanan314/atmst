@@ -67,10 +67,10 @@ class ReadOnlyCARBlockStore(BlockStore):
 				break # EOF
 			start = file.tell()
 			CID_LENGTH = 36  # XXX: this is a questionable assumption!!!
-			cid = file.read(CID_LENGTH)
-			if cid[:4] != b"\x01\x71\x12\x20": # I think this is enough to verify the assumption
+			cid = CID(file.read(CID_LENGTH))
+			if not cid.is_cidv1_dag_cbor_sha256_32(): # I think this is enough to verify the assumption
 				raise ValueError("unsupported CID type")
-			self.block_offsets[cid] = (start + CID_LENGTH, length - CID_LENGTH)
+			self.block_offsets[bytes(cid)] = (start + CID_LENGTH, length - CID_LENGTH)
 			file.seek(start + length)
 	
 	def put_block(self, key: bytes, value: bytes) -> None:
@@ -83,7 +83,7 @@ class ReadOnlyCARBlockStore(BlockStore):
 		if len(value) != length:
 			raise EOFError()
 		if self.validate_hashes:
-			if key[:4] != b"\x01\x71\x12\x20":
+			if key[:4] != CID.CIDV1_DAG_CBOR_SHA256_32_PFX:
 				raise ValueError("unsupported CID type")
 			digest = hashlib.sha256(value).digest()
 			if digest != key[4:]:
