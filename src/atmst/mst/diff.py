@@ -127,9 +127,9 @@ def _mst_diff_recursive(created: Set[CID], deleted: Set[CID], a: NodeWalker, b: 
 	deleted.add(a.frame.node.cid)
 
 	while True:
-		while a.rkey != b.rkey: # we need a loop because they might "leapfrog" each other
+		while a.rpath != b.rpath: # we need a loop because they might "leapfrog" each other
 			# "catch up" cursor a, if it's behind
-			while a.rkey < b.rkey and not a.is_final:
+			while a.rpath < b.rpath and not a.is_final:
 				if a.subtree: # recurse down every subtree
 					a.down()
 					deleted.add(a.frame.node.cid)
@@ -137,20 +137,20 @@ def _mst_diff_recursive(created: Set[CID], deleted: Set[CID], a: NodeWalker, b: 
 					a.right()
 			
 			# catch up cursor b, likewise
-			while b.rkey < a.rkey and not b.is_final:
+			while b.rpath < a.rpath and not b.is_final:
 				if b.subtree: # recurse down every subtree
 					b.down()
 					created.add(b.frame.node.cid)
 				else:
 					b.right()
 
-		# the rkeys now match, but the subrees below us might not
+		# the rpaths now match, but the subrees below us might not
 		
 		_mst_diff_recursive(created, deleted, a.subtree_walker(), b.subtree_walker())
 
 		# check if we can still go right XXX: do we need to care about the case where one can, but the other can't?
 		# To consider: maybe if I just step a, b will catch up automagically
-		if a.rkey == a.stack[0].rkey and b.rkey == b.stack[0].rkey:
+		if a.rpath == a.stack[0].rpath and b.rpath == b.stack[0].rpath:
 			break
 
 		a.right()

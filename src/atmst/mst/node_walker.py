@@ -18,43 +18,43 @@ class NodeWalker:
 
 	Recall MSTNode layout: ::
 
-		keys:  (lkey)  (0,    1,    2,    3)  (rkey)
-		vals:          (0,    1,    2,    3)
-		subtrees:   (0,    1,    2,    3,    4)
+		keys:  (lpath)  (0,    1,    2,    3)  (rpath)
+		vals:           (0,    1,    2,    3)
+		subtrees:    (0,    1,    2,    3,    4)
 
 	"""
-	KEY_MIN = "" # string that compares less than all legal key strings
-	KEY_MAX = "\xff" # string that compares greater than all legal key strings
+	PATH_MIN = "" # string that compares less than all legal path strings
+	PATH_MAX = "\xff" # string that compares greater than all legal path strings
 
 	@dataclass
 	class StackFrame:
 		node: MSTNode # could store CIDs only to save memory, in theory, but not much point
-		lkey: str
-		rkey: str
+		lpath: str
+		rpath: str
 		idx: int
 
 	ns: NodeStore
 	stack: List[StackFrame]
 	
-	def __init__(self, ns: NodeStore, root_cid: Optional[CID], lkey: Optional[str]=KEY_MIN, rkey: Optional[str]=KEY_MAX) -> None:
+	def __init__(self, ns: NodeStore, root_cid: Optional[CID], lpath: Optional[str]=PATH_MIN, rpath: Optional[str]=PATH_MAX) -> None:
 		self.ns = ns
 		self.stack = [self.StackFrame(
 			node=MSTNode.empty_root() if root_cid is None else self.ns.get_node(root_cid),
-			lkey=lkey,
-			rkey=rkey,
+			lpath=lpath,
+			rpath=rpath,
 			idx=0
 		)]
 	
 	def subtree_walker(self) -> Self:
-		return NodeWalker(self.ns, self.subtree, self.lkey, self.rkey)
+		return NodeWalker(self.ns, self.subtree, self.lpath, self.rpath)
 	
 	@property
 	def frame(self) -> StackFrame:
 		return self.stack[-1]
 
 	@property
-	def lkey(self) -> str:
-		return self.frame.lkey if self.frame.idx == 0 else self.frame.node.keys[self.frame.idx - 1]
+	def lpath(self) -> str:
+		return self.frame.lpath if self.frame.idx == 0 else self.frame.node.keys[self.frame.idx - 1]
 	
 	@property
 	def lval(self) -> Optional[CID]:
@@ -64,10 +64,9 @@ class NodeWalker:
 	def subtree(self) -> Optional[CID]:
 		return self.frame.node.subtrees[self.frame.idx]
 	
-	# hmmmm rkey is overloaded here... "right key" not "record key"...
 	@property
-	def rkey(self) -> str:
-		return self.frame.rkey if self.frame.idx == len(self.frame.node.keys) else self.frame.node.keys[self.frame.idx]
+	def rpath(self) -> str:
+		return self.frame.rpath if self.frame.idx == len(self.frame.node.keys) else self.frame.node.keys[self.frame.idx]
 	
 	@property
 	def rval(self) -> Optional[CID]:
@@ -75,7 +74,7 @@ class NodeWalker:
 
 	@property
 	def is_final(self) -> bool:
-		return (not self.stack) or (self.subtree is None and self.rkey == self.stack[0].rkey)
+		return (not self.stack) or (self.subtree is None and self.rpath == self.stack[0].rpath)
 
 	def right(self) -> None:
 		if (self.frame.idx + 1) >= len(self.frame.node.subtrees):
@@ -93,8 +92,8 @@ class NodeWalker:
 
 		self.stack.append(self.StackFrame(
 			node=self.ns.get_node(subtree),
-			lkey=self.lkey,
-			rkey=self.rkey,
+			lpath=self.lpath,
+			rpath=self.rpath,
 			idx=0
 		))
 	
@@ -105,9 +104,10 @@ class NodeWalker:
 		while self.subtree: # recurse down every subtree
 			self.down()
 		self.right()
-		return self.lkey, self.lval # the kv pair we just jumped over
+		return self.lpath, self.lval # the kv pair we just jumped over
 
 	# iterate over every k/v pair in key-sorted order
+	# NB: should really be p/v standing for path/value
 	def iter_kv(self) -> Iterable[Tuple[str, CID]]:
 		while not self.is_final:
 			yield self.next_kv()
@@ -128,7 +128,7 @@ class NodeWalker:
 	# start inclusive
 	def iter_kv_range(self, start: str, end: str, end_inclusive: bool=False) -> Iterable[Tuple[str, CID]]:
 		while True:
-			while self.rkey < start:
+			while self.rpath < start:
 				self.right()
 			if not self.subtree:
 				break
@@ -141,11 +141,11 @@ class NodeWalker:
 	
 	def find_value(self, key: str) -> Optional[CID]:
 		while True:
-			while self.rkey < key:
+			while self.rpath < key:
 				self.right()
 			if not self.subtree:
 				break
 			self.down()
-		if self.rkey != key:
+		if self.rpath != key:
 			return None
 		return self.rval

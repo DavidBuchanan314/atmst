@@ -22,7 +22,7 @@ class MSTDiffTestCase(unittest.TestCase):
 		self.assertRaises(ValueError, decode_varint, io.BytesIO(b'\xff\xff\xff\xff\xff\xff\xff\xff\xff\x7f')) # too big
 		self.assertRaises(ValueError, decode_varint, io.BytesIO(b"")) # too short
 		self.assertRaises(ValueError, decode_varint, io.BytesIO(b'\xff')) # truncated
-		self.assertRaises(ValueError, decode_varint, io.BytesIO(b"\x80\x00")) # too minimally encoded
+		self.assertRaises(ValueError, decode_varint, io.BytesIO(b"\x80\x00")) # not minimally encoded
 
 if __name__ == '__main__':
 	unittest.main(module="tests.test_varint")
