@@ -1,4 +1,5 @@
 import unittest
+import random
 
 from atmst.all import MemoryBlockStore, NodeStore, NodeWrangler, mst_diff, very_slow_mst_diff
 from atmst.mst.node import MSTNode
@@ -39,6 +40,28 @@ class MSTDiffTestCase(unittest.TestCase):
 				created, deleted = mst_diff(self.ns, a, b)
 				self.assertEqual(created, reference_created)
 				self.assertEqual(deleted, reference_deleted)
+	
+	def test_insertion_order_independent(self):
+		wrangler = NodeWrangler(self.ns)
+
+		keys = [str(x) for x in range(1000)]
+
+		mst_a = MSTNode.empty_root().cid
+		mst_b = MSTNode.empty_root().cid
+		mst_c = MSTNode.empty_root().cid
+
+		for k in keys:
+			mst_a = wrangler.put_record(mst_a, k, CID.cidv1_dag_cbor_sha256_32_from(k.encode()))
+
+		for k in keys[::-1]:
+			mst_b = wrangler.put_record(mst_b, k, CID.cidv1_dag_cbor_sha256_32_from(k.encode()))
+
+		random.shuffle(keys)
+		for k in keys:
+			mst_c = wrangler.put_record(mst_c, k, CID.cidv1_dag_cbor_sha256_32_from(k.encode()))
+
+		self.assertEqual(mst_a, mst_b)
+		self.assertEqual(mst_a, mst_c)
 
 if __name__ == '__main__':
 	unittest.main(module="tests.test_mst_diff")
