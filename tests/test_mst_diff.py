@@ -5,6 +5,13 @@ from atmst.all import MemoryBlockStore, NodeStore, NodeWrangler, mst_diff, very_
 from atmst.mst.node import MSTNode
 from cbrrr import CID
 
+def dump_mst(ns: NodeStore, cid: CID, lvl=0):
+	node = ns.get_node(cid)
+	print("  "*lvl + "-", node)
+	for subtree in node.subtrees:
+		if subtree:
+			dump_mst(ns, subtree, lvl+1)
+
 class MSTDiffTestCase(unittest.TestCase):
 	def setUp(self):
 		keys = []
@@ -59,6 +66,12 @@ class MSTDiffTestCase(unittest.TestCase):
 		random.shuffle(keys)
 		for k in keys:
 			mst_c = wrangler.put_record(mst_c, k, CID.cidv1_dag_cbor_sha256_32_from(k.encode()))
+
+		#print()
+		#dump_mst(self.ns, mst_a)
+
+		#print()
+		#dump_mst(self.ns, mst_b)
 
 		self.assertEqual(mst_a, mst_b)
 		self.assertEqual(mst_a, mst_c)

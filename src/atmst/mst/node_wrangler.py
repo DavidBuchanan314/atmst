@@ -73,7 +73,11 @@ class NodeWrangler:
 	def _put_recursive(self, node: MSTNode, key: str, val: CID, key_height: int, tree_height: int) -> MSTNode:
 		if key_height > tree_height: # we need to grow the tree
 			return self.ns.stored_node(self._put_recursive(
-				MSTNode.empty_root(),
+				self.ns.stored_node(MSTNode(
+					keys=(),
+					vals=(),
+					subtrees=(node.cid,)
+				)),
 				key, val, key_height, tree_height + 1
 			))
 		
