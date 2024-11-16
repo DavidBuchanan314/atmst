@@ -17,14 +17,14 @@ class DeltaType(Enum):
 @dataclass
 class RecordDelta:
 	delta_type: DeltaType
-	key: str
+	path: str
 	prior_value: Optional[CID]
 	later_value: Optional[CID]
 
 	def __repr__(self) -> str:
 		prior = "NULL" if self.prior_value is None else self.prior_value.encode('base32')
 		later = "NULL" if self.later_value is None else self.later_value.encode('base32')
-		return f"{self.delta_type.name} {json.dumps(self.key)}: {prior} -> {later}"
+		return f"{self.delta_type.name} {json.dumps(self.path)}: {prior} -> {later}"
 
 def record_diff(ns: NodeStore, created: set[CID], deleted: set[CID]) -> Iterable[RecordDelta]:
 	"""
@@ -36,7 +36,7 @@ def record_diff(ns: NodeStore, created: set[CID], deleted: set[CID]) -> Iterable
 	for created_key in created_kv.keys() - deleted_kv.keys():
 		yield RecordDelta(
 			delta_type=DeltaType.CREATED,
-			key=created_key,
+			path=created_key,
 			prior_value=None,
 			later_value=created_kv[created_key]
 		)
@@ -46,14 +46,14 @@ def record_diff(ns: NodeStore, created: set[CID], deleted: set[CID]) -> Iterable
 		if v1 != v2:
 			yield RecordDelta(
 				delta_type=DeltaType.UPDATED,
-				key=updated_key,
+				path=updated_key,
 				prior_value=v1,
 				later_value=v2
 			)
 	for deleted_key in deleted_kv.keys() - created_kv.keys():
 		yield RecordDelta(
 			delta_type=DeltaType.DELETED,
-			key=deleted_key,
+			path=deleted_key,
 			prior_value=None,
 			later_value=deleted_kv[deleted_key]
 		)
