@@ -143,7 +143,7 @@ class NodeWalker:
 		while True:
 			while self.rpath < key:
 				self.right()
-			if not self.subtree:
+			if self.rpath == key or not self.subtree:
 				break
 			self.down()
 		if self.rpath != key:
