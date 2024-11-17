@@ -41,8 +41,8 @@ def record_diff(ns: NodeStore, created: set[CID], deleted: set[CID]) -> Iterable
 			later_value=created_kv[created_key]
 		)
 	for updated_key in created_kv.keys() & deleted_kv.keys():
-		v1 = created_kv[updated_key]
-		v2 = deleted_kv[updated_key]
+		v1 = deleted_kv[updated_key]
+		v2 = created_kv[updated_key]
 		if v1 != v2:
 			yield RecordDelta(
 				delta_type=DeltaType.UPDATED,
@@ -54,8 +54,8 @@ def record_diff(ns: NodeStore, created: set[CID], deleted: set[CID]) -> Iterable
 		yield RecordDelta(
 			delta_type=DeltaType.DELETED,
 			path=deleted_key,
-			prior_value=None,
-			later_value=deleted_kv[deleted_key]
+			prior_value=deleted_kv[deleted_key],
+			later_value=None
 		)
 
 def very_slow_mst_diff(ns: NodeStore, root_a: CID, root_b: CID):
