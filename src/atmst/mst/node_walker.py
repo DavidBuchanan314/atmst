@@ -1,5 +1,7 @@
 from dataclasses import dataclass
-from typing import Tuple, Self, Optional, List, Iterable
+from typing import TYPE_CHECKING, Tuple, Optional, List, Iterable
+if TYPE_CHECKING: # Self doesn't exist <3.11
+	from typing import Self
 
 from cbrrr import CID
 
@@ -45,7 +47,7 @@ class NodeWalker:
 			idx=0
 		)]
 	
-	def subtree_walker(self) -> Self:
+	def subtree_walker(self) -> "Self":
 		return NodeWalker(self.ns, self.subtree, self.lpath, self.rpath)
 	
 	@property

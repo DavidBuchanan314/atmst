@@ -4,7 +4,10 @@ from functools import cached_property
 from more_itertools import ilen
 from itertools import takewhile
 from dataclasses import dataclass
-from typing import Tuple, Self, Optional
+
+from typing import TYPE_CHECKING, Tuple, Optional
+if TYPE_CHECKING: # Self doesn't exist <3.11
+	from typing import Self
 
 from cbrrr import encode_dag_cbor, decode_dag_cbor, CID
 
@@ -38,7 +41,7 @@ class MSTNode:
 			raise ValueError("Mismatched keys/vals lengths")
 
 	@classmethod
-	def empty_root(cls) -> Self:
+	def empty_root(cls) -> "Self":
 		return cls(
 			subtrees=(None,),
 			keys=(),
@@ -78,7 +81,7 @@ class MSTNode:
 		})
 
 	@classmethod
-	def deserialise(cls, data: bytes) -> Self:
+	def deserialise(cls, data: bytes) -> "Self":
 		cbor = decode_dag_cbor(data)
 		if len(cbor) != 2: # e, l
 			raise ValueError("malformed MST node")

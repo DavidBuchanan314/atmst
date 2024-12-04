@@ -6,13 +6,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atmst"
-version = "0.0.3"
+version = "0.0.4"
 authors = [
  	{ name="David Buchanan", email="d@vidbuchanan.co.uk" },
 ]
 description = "A Python library for wrangling atproto-flavoured Merkle Search Trees"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 classifiers = [
 	"Programming Language :: Python :: 3",
 	"License :: OSI Approved :: MIT License",
