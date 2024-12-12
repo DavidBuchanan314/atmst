@@ -55,6 +55,10 @@ class NodeWalker:
 		return self.stack[-1]
 
 	@property
+	def height(self) -> int:
+		return self.frame.node.height
+
+	@property
 	def lpath(self) -> str:
 		return self.frame.lpath if self.frame.idx == 0 else self.frame.node.keys[self.frame.idx - 1]
 	
@@ -76,21 +80,31 @@ class NodeWalker:
 
 	@property
 	def is_final(self) -> bool:
+		# is (not self.stack) really necesasry here? is that a reachable state?
 		return (not self.stack) or (self.subtree is None and self.rpath == self.stack[0].rpath)
 
-	def right(self) -> None:
-		if (self.frame.idx + 1) >= len(self.frame.node.subtrees):
+	@property
+	def can_go_right(self) -> bool:
+		return (self.frame.idx + 1) < len(self.frame.node.subtrees)
+
+	def right_or_up(self) -> None:
+		if not self.can_go_right:
 			# we reached the end of this node, go up a level
 			self.stack.pop()
 			if not self.stack:
 				raise StopIteration # you probably want to check .final instead of hitting this
-			return self.right() # we need to recurse, to skip over empty intermediates on the way back up
+			return self.right_or_up() # we need to recurse, to skip over empty intermediates on the way back up
+		self.frame.idx += 1
+
+	def right(self) -> None:
+		if not self.can_go_right:
+			raise Exception("cursor is already at rightmost position in node")
 		self.frame.idx += 1
 
 	def down(self) -> None:
 		subtree = self.frame.node.subtrees[self.frame.idx]
 		if subtree is None:
-			raise Exception("oi, you can't recurse here mate")
+			raise Exception("oi, you can't recurse here mate (subtree is None)")
 
 		self.stack.append(self.StackFrame(
 			node=self.ns.get_node(subtree),
@@ -105,7 +119,7 @@ class NodeWalker:
 	def next_kv(self) -> Tuple[str, CID]:
 		while self.subtree: # recurse down every subtree
 			self.down()
-		self.right()
+		self.right_or_up()
 		return self.lpath, self.lval # the kv pair we just jumped over
 
 	# iterate over every k/v pair in key-sorted order
@@ -121,7 +135,7 @@ class NodeWalker:
 			while self.subtree: # recurse down every subtree
 				self.down()
 				yield self.frame.node
-			self.right()
+			self.right_or_up()
 
 	def iter_node_cids(self) -> Iterable[CID]:
 		for node in self.iter_nodes():
@@ -131,7 +145,7 @@ class NodeWalker:
 	def iter_kv_range(self, start: str, end: str, end_inclusive: bool=False) -> Iterable[Tuple[str, CID]]:
 		while True:
 			while self.rpath < start:
-				self.right()
+				self.right_or_up()
 			if not self.subtree:
 				break
 			self.down()
@@ -140,14 +154,22 @@ class NodeWalker:
 			if k > end or (not end_inclusive and k == end):
 				break
 			yield k, v
-	
-	def find_value(self, key: str) -> Optional[CID]:
+
+	# TODO: we need to make this early-exit so that it can work with concise deletion proofs, maybe
+	# (early exit based on key height - might need significant rewrite)
+	def find_rpath(self, rpath: str) -> Optional[CID]:
+		rpath_height = MSTNode.key_height(rpath)
 		while True:
-			while self.rpath < key:
+			# if the rpath we're looking for is higher than the current cursor,
+			# we're never going to find it (i.e. we early-exit)
+			if rpath_height > self.height:
+				return None
+			while self.rpath < rpath: # either look for the rpath, or the right point to go down
+				if not self.can_go_right:
+					return None
 				self.right()
-			if self.rpath == key or not self.subtree:
-				break
+			if self.rpath == rpath:
+				return self.rval # found it!
+			if not self.subtree:
+				return None # need to go down, but we can't
 			self.down()
-		if self.rpath != key:
-			return None
-		return self.rval

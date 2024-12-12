@@ -38,7 +38,7 @@ class ReadOnlyCARBlockStore(BlockStore):
 	proofs provided in CAR format, and for testing.
 	"""
 
-	car_roots: List[CID]
+	car_root: CID
 	block_offsets: Dict[bytes, Tuple[int, int]] # CID -> (offset, length)
 
 	def __init__(self, file: BinaryIO, validate_hashes: bool=True) -> None:

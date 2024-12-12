@@ -19,12 +19,14 @@ class MSTDiffTestCase(unittest.TestCase):
 		i = 0
 		for height in [0, 1, 0, 2, 0, 1, 0]: # if all these keys are added to a MST, it'll form a perfect binary tree.
 			while True:
-				key = f"{i:04d}"
+				key = f"k/{i:02d}"
 				i += 1
 				if MSTNode.key_height(key) == height:
 					keys.append(key)
 					break
-		
+
+		#print(keys)
+
 		bs = MemoryBlockStore()
 		self.ns = NodeStore(bs)
 		wrangler = NodeWrangler(self.ns)

@@ -57,7 +57,7 @@ def dump_all(car_path: str):
 
 def dump_record(car_path: str, key: str):
 	bs, commit = open_car(car_path)
-	val = NodeWalker(NodeStore(bs), commit["data"]).find_value(key)
+	val = NodeWalker(NodeStore(bs), commit["data"]).find_rpath(key)
 	if val is None:
 		print("Record not found!", file=sys.stderr)
 		sys.exit(-1)

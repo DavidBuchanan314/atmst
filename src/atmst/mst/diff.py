@@ -134,7 +134,7 @@ def _mst_diff_recursive(created: Set[CID], deleted: Set[CID], a: NodeWalker, b: 
 					a.down()
 					deleted.add(a.frame.node.cid)
 				else:
-					a.right()
+					a.right_or_up()
 			
 			# catch up cursor b, likewise
 			while b.rpath < a.rpath and not b.is_final:
@@ -142,7 +142,7 @@ def _mst_diff_recursive(created: Set[CID], deleted: Set[CID], a: NodeWalker, b: 
 					b.down()
 					created.add(b.frame.node.cid)
 				else:
-					b.right()
+					b.right_or_up()
 
 		# the rpaths now match, but the subrees below us might not
 		
@@ -153,5 +153,5 @@ def _mst_diff_recursive(created: Set[CID], deleted: Set[CID], a: NodeWalker, b: 
 		if a.rpath == a.stack[0].rpath and b.rpath == b.stack[0].rpath:
 			break
 
-		a.right()
-		b.right()
+		a.right_or_up()
+		b.right_or_up()
