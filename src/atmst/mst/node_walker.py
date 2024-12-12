@@ -38,8 +38,9 @@ class NodeWalker:
 	ns: NodeStore
 	stack: List[StackFrame]
 	
-	def __init__(self, ns: NodeStore, root_cid: Optional[CID], lpath: Optional[str]=PATH_MIN, rpath: Optional[str]=PATH_MAX) -> None:
+	def __init__(self, ns: NodeStore, root_cid: Optional[CID], lpath: Optional[str]=PATH_MIN, rpath: Optional[str]=PATH_MAX, trusted: Optional[bool]=False) -> None:
 		self.ns = ns
+		self.trusted = trusted
 		self.stack = [self.StackFrame(
 			node=MSTNode.empty_root() if root_cid is None else self.ns.get_node(root_cid),
 			lpath=lpath,
@@ -48,7 +49,7 @@ class NodeWalker:
 		)]
 	
 	def subtree_walker(self) -> "Self":
-		return NodeWalker(self.ns, self.subtree, self.lpath, self.rpath)
+		return NodeWalker(self.ns, self.subtree, self.lpath, self.rpath, self.trusted)
 	
 	@property
 	def frame(self) -> StackFrame:
@@ -98,16 +99,22 @@ class NodeWalker:
 
 	def right(self) -> None:
 		if not self.can_go_right:
-			raise Exception("cursor is already at rightmost position in node")
+			raise ValueError("cursor is already at rightmost position in node")
 		self.frame.idx += 1
 
 	def down(self) -> None:
 		subtree = self.frame.node.subtrees[self.frame.idx]
 		if subtree is None:
-			raise Exception("oi, you can't recurse here mate (subtree is None)")
+			raise ValueError("oi, you can't recurse here mate (subtree is None)")
+
+		subtree_node = self.ns.get_node(subtree)
+
+		if not self.trusted: # if we "trust" the source we can elide this check
+			if subtree_node.height != self.height - 1:
+				raise ValueError("inconsistent subtree height")
 
 		self.stack.append(self.StackFrame(
-			node=self.ns.get_node(subtree),
+			node=subtree_node,
 			lpath=self.lpath,
 			rpath=self.rpath,
 			idx=0
