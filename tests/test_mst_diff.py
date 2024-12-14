@@ -43,8 +43,11 @@ class MSTDiffTestCase(unittest.TestCase):
 			self.trees.append(root)
 	
 	def test_diff_all_pairs(self):
-		for a in self.trees:
-			for b in self.trees:
+		for ai, a in enumerate(self.trees):
+			for bi, b in enumerate(self.trees):
+				#print(ai, bi)
+				#print(self.ns.pretty(a))
+				#print(self.ns.pretty(b))
 				reference_created, reference_deleted = very_slow_mst_diff(self.ns, a, b)
 				created, deleted = mst_diff(self.ns, a, b)
 				self.assertEqual(created, reference_created)

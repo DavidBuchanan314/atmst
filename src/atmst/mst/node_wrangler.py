@@ -37,7 +37,7 @@ class NodeWrangler:
 		root = self.ns.get_node(root_cid)
 		if root.is_empty(): # special case for empty tree
 			return self._put_here(root, key, val).cid
-		return self._put_recursive(root, key, val, MSTNode.key_height(key), root.height).cid
+		return self._put_recursive(root, key, val, MSTNode.key_height(key), root.definitely_height()).cid
 
 	def del_record(self, root_cid: CID, key: str) -> CID:
 		root = self.ns.get_node(root_cid)
@@ -45,7 +45,11 @@ class NodeWrangler:
 		# Note: the seemingly redundant outer .get().cid is required to transform
 		# a None cid into the cid representing an empty node (we could maybe find a more elegant
 		# way of doing this...)
-		return self.ns.get_node(self._squash_top(self._delete_recursive(root, key, MSTNode.key_height(key), root.height))).cid
+		return self.ns.get_node(self._squash_top(
+			self._delete_recursive(
+				root, key, MSTNode.key_height(key), root.definitely_height()
+			)
+		)).cid
 
 
 

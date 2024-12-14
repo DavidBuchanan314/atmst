@@ -114,7 +114,7 @@ class MSTNode:
 			keys=tuple(keys),
 			vals=tuple(vals)
 		)
-	
+
 	def is_empty(self) -> bool:
 		return self.subtrees == (None,)
 
@@ -128,18 +128,25 @@ class MSTNode:
 
 
 	@cached_property
-	def height(self) -> int:
+	def maybe_height(self) -> Optional[int]:
 		# if there are keys at this level, query one directly
 		if self.keys:
 			return self.key_height(self.keys[0])
-		
+
 		# we're an empty tree
 		if self.subtrees[0] is None:
 			return 0
-		
-		# this should only happen for non-root nodes with no keys
-		raise Exception("cannot determine node height")
-	
+
+		# this should only happen for non-root nodes with no keys (aka an empty intermediate node)
+		return None
+		# NOTE: a Node class cannot see what's below it. You'll need to track
+		# state externally (like NodeWrangler does) if you want to find out
+
+	def definitely_height(self) -> int:
+		if self.maybe_height is None:
+			raise ValueError("indeterminate node height")
+		return self.maybe_height
+
 	def gte_index(self, key: str) -> int:
 		"""
 		find the index of the first key greater than or equal to the specified key

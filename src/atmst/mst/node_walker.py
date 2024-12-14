@@ -37,19 +37,38 @@ class NodeWalker:
 
 	ns: NodeStore
 	stack: List[StackFrame]
+	root_height: int
 	
-	def __init__(self, ns: NodeStore, root_cid: Optional[CID], lpath: Optional[str]=PATH_MIN, rpath: Optional[str]=PATH_MAX, trusted: Optional[bool]=False) -> None:
+	def __init__(self,
+		ns: NodeStore,
+		root_cid: Optional[CID],
+		lpath: str=PATH_MIN,
+		rpath: str=PATH_MAX,
+		trusted: bool=False,
+		root_height: Optional[int]=None
+	) -> None:
 		self.ns = ns
 		self.trusted = trusted
+		node = MSTNode.empty_root() if root_cid is None else self.ns.get_node(root_cid)
+		self.root_height = node.maybe_height if root_height is None else root_height
+		if self.root_height is None:
+			raise ValueError("indeterminate node height - pass it in if you know it")
 		self.stack = [self.StackFrame(
-			node=MSTNode.empty_root() if root_cid is None else self.ns.get_node(root_cid),
+			node=node,
 			lpath=lpath,
 			rpath=rpath,
 			idx=0
 		)]
 	
 	def subtree_walker(self) -> "Self":
-		return NodeWalker(self.ns, self.subtree, self.lpath, self.rpath, self.trusted)
+		return NodeWalker(
+			self.ns,
+			self.subtree,
+			self.lpath,
+			self.rpath,
+			self.trusted,
+			root_height=self.height - 1
+		)
 	
 	@property
 	def frame(self) -> StackFrame:
@@ -57,7 +76,7 @@ class NodeWalker:
 
 	@property
 	def height(self) -> int:
-		return self.frame.node.height
+		return self.root_height - (len(self.stack) - 1)
 
 	@property
 	def lpath(self) -> str:
@@ -91,7 +110,7 @@ class NodeWalker:
 	def right_or_up(self) -> None:
 		if not self.can_go_right:
 			# we reached the end of this node, go up a level
-			self.stack.pop()
+			self.stack.pop() # TODO: check before pop - make empty-stack an unreachable state
 			if not self.stack:
 				raise StopIteration # you probably want to check .final instead of hitting this
 			return self.right_or_up() # we need to recurse, to skip over empty intermediates on the way back up
@@ -110,8 +129,9 @@ class NodeWalker:
 		subtree_node = self.ns.get_node(subtree)
 
 		if not self.trusted: # if we "trust" the source we can elide this check
-			if subtree_node.height != self.height - 1:
-				raise ValueError("inconsistent subtree height")
+			# the "None" case occurs for empty intermediate nodes
+			if subtree_node.maybe_height is not None and subtree_node.maybe_height != self.height - 1:
+				raise ValueError(f"inconsistent subtree height ({subtree_node.maybe_height}, expected {self.height - 1})")
 
 		self.stack.append(self.StackFrame(
 			node=subtree_node,
