@@ -38,6 +38,7 @@ make html
 publishing to pypi: (this one is mainly for my benefit!)
 
 ```
+rm -rf build/* dist/*
 python3 -m build
-python3 -m twine upload --repository pypi dist/atmst-*.tar.gz
+python3 -m twine upload --repository pypi dist/*
 ```
