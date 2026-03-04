@@ -33,7 +33,7 @@ class BlockStore(ABC):
 
 
 class MemoryBlockStore(BlockStore):
-	_state = Dict[bytes, bytes]
+	_state: Dict[bytes, bytes]
 
 	def __init__(self, state: Optional[Dict[bytes, bytes]]=None) -> None:
 		"""

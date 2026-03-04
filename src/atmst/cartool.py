@@ -20,6 +20,8 @@ def open_car(car_path: str) -> Tuple[ReadOnlyCARBlockStore, dict]:
 	carfile = open(car_path, "rb")
 	bs = ReadOnlyCARBlockStore(carfile)
 	commit = decode_dag_cbor(bs.get_block(bytes(bs.car_root)))
+	if not isinstance(commit, dict):
+		raise TypeError
 	return bs, commit
 
 def print_info(car_path: str) -> None:

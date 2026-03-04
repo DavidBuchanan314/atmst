@@ -56,11 +56,19 @@ class ReadOnlyCARBlockStore(BlockStore):
 		if len(header) != header_len:
 			raise EOFError("not enough CAR header bytes")
 		header_obj = decode_dag_cbor(header)
+		if not isinstance(header_obj, dict):
+			raise TypeError
 		if header_obj.get("version") != 1:
 			raise ValueError(f"unsupported CAR version ({header_obj.get('version')})")
-		if len(header_obj["roots"]) != 1:
-			raise ValueError(f"unsupported number of CAR roots ({len(header_obj['roots'])}, expected 1)")
-		self.car_root = header_obj["roots"][0]
+		roots = header_obj["roots"]
+		if not isinstance(roots, list):
+			raise TypeError
+		if len(roots) != 1:
+			raise ValueError(f"unsupported number of CAR roots ({len(roots)}, expected 1)")
+		root = roots[0]
+		if not isinstance(root, CID):
+			raise TypeError
+		self.car_root = root
 
 		# scan through the CAR to find block offsets
 		self.block_offsets = {}
