@@ -14,7 +14,7 @@ class NodeStore:
 	for loading and storing MSTNodes
 	"""
 	bs: BlockStore
-	cache: Dict[Optional[CID], MSTNode]
+	cache: LRU[Optional[CID], MSTNode]
 
 	def __init__(self, bs: BlockStore) -> None:
 		self.bs = bs

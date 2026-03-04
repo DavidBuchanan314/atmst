@@ -50,7 +50,7 @@ class NodeWalker:
 		self.ns = ns
 		self.trusted = trusted
 		node = MSTNode.empty_root() if root_cid is None else self.ns.get_node(root_cid)
-		self.root_height = node.maybe_height if root_height is None else root_height
+		self.root_height = node.definitely_height() if root_height is None else root_height
 		if self.root_height is None:
 			raise ValueError("indeterminate node height - pass it in if you know it")
 		self.stack = [self.StackFrame(
@@ -61,7 +61,7 @@ class NodeWalker:
 		)]
 	
 	def subtree_walker(self) -> "Self":
-		return NodeWalker(
+		return self.__class__(
 			self.ns,
 			self.subtree,
 			self.lpath,
@@ -147,6 +147,7 @@ class NodeWalker:
 		while self.subtree: # recurse down every subtree
 			self.down()
 		self.right_or_up()
+		assert self.lval is not None
 		return self.lpath, self.lval # the kv pair we just jumped over
 
 	# iterate over every k/v pair in key-sorted order
