@@ -6,11 +6,12 @@ from typing import Tuple, BinaryIO
 
 from cbrrr import encode_dag_cbor, decode_dag_cbor, CID
 
-from .blockstore.car_file import ReadOnlyCARBlockStore, encode_varint
+from .blockstore.car_file import ReadOnlyCARBlockStore, encode_varint, CarStreamReader
 from .blockstore import OverlayBlockStore
 from .mst.node_store import NodeStore
 from .mst.node_walker import NodeWalker
 from .mst.diff import mst_diff, record_diff
+from .mst.node import MSTNode
 
 
 def prettify_record(record) -> str:
@@ -111,13 +112,51 @@ def print_record_diff(car_a: str, car_b: str):
 	for delta in record_diff(ns, mst_created, mst_deleted):
 		print(delta)
 
+def verify_car(car_path: str):
+	blocks = {} # for a preorder-traversal-ordered CAR, this never grows beyond 0
+	with open(car_path, "rb") as carfile:
+		carstream = CarStreamReader(carfile)
+		car_iter = iter(carstream)
+		def lazy_get(key: CID, fallback: dict={}) -> bytes:
+			print("len", len(blocks))
+			if key in fallback:
+				return fallback[key]
+			if key in blocks:
+				return blocks.pop(key)
+			while True:
+				try:
+					k, v = next(car_iter)
+				except StopIteration:
+					raise ValueError(f"lookup failed for {key}")
+				if k == key:
+					return v
+				blocks[k] = v
+		commit = decode_dag_cbor(lazy_get(carstream.car_root))
+		assert isinstance(commit, dict)
+		root_cid = commit["data"]
+		assert isinstance(root_cid, CID)
+		def verify_mst(node_cid: CID, ctx: dict):
+			node = MSTNode.deserialise(lazy_get(node_cid))
+			fallback = ctx.copy()
+			for k, v in zip(node.keys, node.vals):
+				print(k)
+				rv = lazy_get(v, fallback)
+				fallback[v] = rv
+				print(k, len(rv))
+			for subtree in node.subtrees:
+				if subtree is not None:
+					verify_mst(subtree, fallback)
+		verify_mst(root_cid, {})
+		print(carstream.file.tell()) # should be at EOF now
+
 COMMANDS = {
 	"info": (print_info, "print CAR header and repo info"),
 	"list": (list_all, "list all records in the CAR (values as CIDs)"),
 	"dump": (dump_all, "dump all records in the CAR (values as JSON)"),
 	"dump_record": (dump_record, "dump a single record, keyed on ('collection/rkey')"),
 	"compact": (compact, "rewrite the whole CAR, in sync1.1 preorder-traversal-order, dropping any unreferenced blocks"),
-	"diff": (print_record_diff, "list the record diff between two CAR files")
+	"diff": (print_record_diff, "list the record diff between two CAR files"),
+	"verify": (verify_car, "verify the MST structure and all hashes (but NOT the commit signature!)"),
 }
 
 def print_help():

@@ -104,3 +104,58 @@ class ReadOnlyCARBlockStore(BlockStore):
 	
 	def del_block(self, key: bytes) -> None:
 		raise NotImplementedError("ReadOnlyCARBlockStore does not support delete()")
+
+class CarStreamReader:
+	"""
+	Rather than pre-indexing the block offsets, this lets you iterate over the k/v pairs
+	"""
+	car_root: CID
+	def __init__(self, file: BinaryIO, validate_hashes: bool=True) -> None:
+		self.file = file
+		self.validate_hashes = validate_hashes
+
+		# parse out CAR header
+		header_len = decode_varint(file)
+		header = file.read(header_len)
+		if len(header) != header_len:
+			raise EOFError("not enough CAR header bytes")
+		header_obj = decode_dag_cbor(header)
+		if not isinstance(header_obj, dict):
+			raise TypeError
+		if header_obj.get("version") != 1:
+			raise ValueError(f"unsupported CAR version ({header_obj.get('version')})")
+		roots = header_obj["roots"]
+		if not isinstance(roots, list):
+			raise TypeError
+		if len(roots) != 1:
+			raise ValueError(f"unsupported number of CAR roots ({len(roots)}, expected 1)")
+		root = roots[0]
+		if not isinstance(root, CID):
+			raise TypeError
+		self.car_root = root
+	
+	def __iter__(self) -> "CarStreamReader":
+		return self
+
+	def __next__(self):
+		try:
+			length = decode_varint(self.file)
+		except ValueError:
+			raise StopIteration
+		
+		CID_LENGTH = 36  # XXX: this is a questionable assumption!!!
+		cid = CID(self.file.read(CID_LENGTH))
+		if not cid.is_cidv1_dag_cbor_sha256_32(): # I think this is enough to verify the assumption
+			raise ValueError("unsupported CID type")
+
+		value = self.file.read(length - CID_LENGTH)
+
+		if CID_LENGTH + len(value) != length:
+			raise ValueError("unexpected read length")
+
+		if self.validate_hashes:
+			digest = hashlib.sha256(value).digest()
+			if digest != cid.cid_bytes[4:]: # XXX: again, assumes is_cidv1_dag_cbor_sha256_32
+				raise ValueError("bad CID hash!")
+
+		return cid, value
