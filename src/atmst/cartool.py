@@ -116,7 +116,7 @@ COMMANDS = {
 	"list": (list_all, "list all records in the CAR (values as CIDs)"),
 	"dump": (dump_all, "dump all records in the CAR (values as JSON)"),
 	"dump_record": (dump_record, "dump a single record, keyed on ('collection/rkey')"),
-	"compact": (compact, "rewrite the whole CAR, dropping any duplicated or unreferenced blocks"),
+	"compact": (compact, "rewrite the whole CAR, in sync1.1 preorder-traversal-order, dropping any unreferenced blocks"),
 	"diff": (print_record_diff, "list the record diff between two CAR files")
 }
 
