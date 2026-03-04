@@ -1,5 +1,5 @@
+from __future__ import annotations
 from typing import Optional, Dict
-from functools import lru_cache
 
 from cbrrr import CID
 from lru import LRU

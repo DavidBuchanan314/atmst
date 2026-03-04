@@ -77,16 +77,11 @@ def compact(car_in: str, car_out: str):
 		})
 		write_block(carfile_out, new_header)
 		write_block(carfile_out, bytes(bs.car_root) + encode_dag_cbor(commit))
-		dedup = {bs.car_root}
 
 		for node in NodeWalker(NodeStore(bs), commit["data"]).iter_nodes():
-			if node.cid not in dedup:
-				write_block(carfile_out, bytes(node.cid) + node.serialised)
-				dedup.add(node.cid)
+			write_block(carfile_out, bytes(node.cid) + node.serialised)
 			for v in node.vals:
-				if v not in dedup:
-					write_block(carfile_out, bytes(v) + bs.get_block(bytes(v)))
-					dedup.add(v)
+				write_block(carfile_out, bytes(v) + bs.get_block(bytes(v)))
 
 def _delta_str(a: str, b: str):
 	if a == b:
