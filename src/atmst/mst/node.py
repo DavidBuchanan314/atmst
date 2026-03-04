@@ -124,8 +124,8 @@ class MSTNode:
 				raise ValueError("invalid MST key sort order")
 			vals.append(v)
 			t = e["t"]
-			if not isinstance(t, CID):
-				raise ValueError("invalid MST key sort order")
+			if not isinstance(t, (CID, None.__class__)):
+				raise ValueError("malformed MST node")
 			subtrees.append(t)
 			prev_key = this_key
 
