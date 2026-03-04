@@ -43,12 +43,18 @@ def print_info(car_path: str) -> None:
 
 def print_all_records(car_path: str, to_json: bool) -> None:
 	bs, commit = open_car(car_path)
+	if to_json:
+		print("{")
+	sep = ""
 	for k, v in NodeWalker(NodeStore(bs), commit["data"]).iter_kv():
 		if to_json:
 			record = decode_dag_cbor(bs.get_block(bytes(v)), atjson_mode=True)
-			print(f"{json.dumps(k)} -> {prettify_record(record)}")
+			print(f"{sep}{json.dumps(k)}: {prettify_record(record)}", end="")
+			sep = ",\n"
 		else:
 			print(f"{json.dumps(k)} -> {v.encode('base32')}")
+	if to_json:
+		print("\n}")
 
 def list_all(car_path: str):
 	print_all_records(car_path, to_json=False)
