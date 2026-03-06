@@ -87,10 +87,8 @@ def compact(car_in: str, car_out: str):
 		write_block(carfile_out, new_header)
 		write_block(carfile_out, bytes(bs.car_root) + encode_dag_cbor(commit))
 
-		for node in NodeWalker(NodeStore(bs), commit["data"]).iter_nodes():
-			write_block(carfile_out, bytes(node.cid) + node.serialised)
-			for v in node.vals:
-				write_block(carfile_out, bytes(v) + bs.get_block(bytes(v)))
+		for cid in NodeWalker(NodeStore(bs), commit["data"]).iter_preorder_cids():
+			write_block(carfile_out, bytes(cid) + bs.get_block(bytes(cid)))
 
 def _delta_str(a: str, b: str):
 	if a == b:
@@ -112,42 +110,48 @@ def print_record_diff(car_a: str, car_b: str):
 	for delta in record_diff(ns, mst_created, mst_deleted):
 		print(delta)
 
-def verify_car(car_path: str):
+def verify_car_streaming(carstream: CarStreamReader):
 	blocks = {} # for a preorder-traversal-ordered CAR, this never grows beyond 0
+	optimistic = [True]
+	car_iter = iter(carstream)
+	def lazy_get(key: CID) -> bytes:
+		print("len", len(blocks))
+		if optimistic[0]:
+			try:
+				k, v = next(car_iter)
+			except StopIteration:
+				raise ValueError(f"lookup failed for {key}")
+			if k == key:
+				return v
+			# if we reached here the CAR is not canonically ordered
+			optimistic[0] = False
+			blocks[k] = v
+			for k, v in car_iter: # slurp the entire rest of CAR into RAM
+				blocks[k] = v
+			# fall thru
+		return blocks[key] # TODO: reopen input and re-slurp if this fails
+	commit = decode_dag_cbor(lazy_get(carstream.car_root))
+	assert isinstance(commit, dict)
+	root_cid = commit["data"]
+	assert isinstance(root_cid, CID)
+	def verify_mst(node_cid: CID):
+		node = MSTNode.deserialise(lazy_get(node_cid))
+		if node.subtrees[0] is not None:
+			verify_mst(node.subtrees[0])
+		for k, v, subtree in zip(node.keys, node.vals, node.subtrees[1:]):
+			print(k)
+			rv = lazy_get(v)
+			print(k, len(rv))
+			if subtree is not None:
+				verify_mst(subtree)
+
+	verify_mst(root_cid)
+	print(carstream.file.tell()) # should be at EOF now
+
+def verify_car(car_path: str):
 	with open(car_path, "rb") as carfile:
 		carstream = CarStreamReader(carfile)
-		car_iter = iter(carstream)
-		def lazy_get(key: CID, fallback: dict={}) -> bytes:
-			print("len", len(blocks))
-			if key in fallback:
-				return fallback[key]
-			if key in blocks:
-				return blocks.pop(key)
-			while True:
-				try:
-					k, v = next(car_iter)
-				except StopIteration:
-					raise ValueError(f"lookup failed for {key}")
-				if k == key:
-					return v
-				blocks[k] = v
-		commit = decode_dag_cbor(lazy_get(carstream.car_root))
-		assert isinstance(commit, dict)
-		root_cid = commit["data"]
-		assert isinstance(root_cid, CID)
-		def verify_mst(node_cid: CID, ctx: dict):
-			node = MSTNode.deserialise(lazy_get(node_cid))
-			fallback = ctx.copy()
-			for k, v in zip(node.keys, node.vals):
-				print(k)
-				rv = lazy_get(v, fallback)
-				fallback[v] = rv
-				print(k, len(rv))
-			for subtree in node.subtrees:
-				if subtree is not None:
-					verify_mst(subtree, fallback)
-		verify_mst(root_cid, {})
-		print(carstream.file.tell()) # should be at EOF now
+		verify_car_streaming(carstream)
 
 COMMANDS = {
 	"info": (print_info, "print CAR header and repo info"),

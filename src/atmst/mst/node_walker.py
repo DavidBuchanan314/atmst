@@ -165,6 +165,18 @@ class NodeWalker:
 				yield self.frame.node
 			self.right_or_up()
 
+	# iterate in "preorder": node, left subtree, val, subtree, val, subtree, ...
+	# this matches the canonical CAR block ordering used by sync1.1
+	def iter_preorder_cids(self) -> Iterable[CID]:
+		yield self.frame.node.cid
+		while not self.is_final:
+			while self.subtree:
+				self.down()
+				yield self.frame.node.cid
+			self.right_or_up()
+			assert self.lval is not None
+			yield self.lval
+
 	def iter_node_cids(self) -> Iterable[CID]:
 		for node in self.iter_nodes():
 			yield node.cid
