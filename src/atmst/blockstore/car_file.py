@@ -119,7 +119,8 @@ class OpportunisticStreamingCarBlockStore(BlockStore):
 
 	This should work in 99.999% of cases. The fallback case could fail if the CAR
 	starts off in canonical order, but has duplicate record CIDs where the second
-	record is *not* duplicated into the CAR.
+	record is *not* duplicated into the CAR. Duplicate CIDs are relatively common
+	in-the-wild, but accidentally-canonical block order is rare.
 
 	In such a case, an OptimisticRetryError is raised, and the caller should
 	retry from scratch with optimistic=False.
@@ -152,6 +153,8 @@ class OpportunisticStreamingCarBlockStore(BlockStore):
 			self._optimistic = False
 			self._blocks[bytes(k)] = v
 			self._slurp(self._car_iter)
+			# fall thru
+
 		try:
 			return self._blocks[key]
 		except KeyError:
