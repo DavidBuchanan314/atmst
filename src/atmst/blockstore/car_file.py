@@ -105,6 +105,77 @@ class ReadOnlyCARBlockStore(BlockStore):
 	def del_block(self, key: bytes) -> None:
 		raise NotImplementedError("ReadOnlyCARBlockStore does not support delete()")
 
+class OptimisticRetryError(KeyError):
+	"""Raised when an optimistic streaming read fails and a retry with
+	optimistic=False may succeed."""
+	pass
+
+class OpportunisticStreamingCarBlockStore(BlockStore):
+	"""
+	A BlockStore backed by a CarStreamReader. Optimistically reads blocks
+	sequentially from the stream, assuming preorder traversal order. If a
+	block is received out of order, falls back to slurping the rest of
+	the stream into memory.
+
+	This should work in 99.999% of cases. The fallback case could fail if the CAR
+	starts off in canonical order, but has duplicate record CIDs where the second
+	record is *not* duplicated into the CAR.
+
+	In such a case, an OptimisticRetryError is raised, and the caller should
+	retry from scratch with optimistic=False.
+	"""
+
+	car_root: CID
+
+	def __init__(self, carstream: "CarStreamReader", optimistic: bool=True) -> None:
+		self.car_root = carstream.car_root
+		self._car_iter = iter(carstream)
+		self._blocks: Dict[bytes, bytes] = {}
+		self._optimistic = optimistic
+		self._was_optimistic = optimistic
+		if not optimistic:
+			self._slurp(self._car_iter)
+
+	def _slurp(self, car_iter) -> None:
+		for k, v in car_iter:
+			self._blocks[bytes(k)] = v
+
+	def get_block(self, key: bytes) -> bytes:
+		if self._optimistic:
+			try:
+				k, v = next(self._car_iter)
+			except StopIteration:
+				raise KeyError(f"block not found: {key!r}")
+			if bytes(k) == key:
+				return v
+			# CAR is not canonically ordered, slurp the rest into memory
+			self._optimistic = False
+			self._blocks[bytes(k)] = v
+			self._slurp(self._car_iter)
+		try:
+			return self._blocks[key]
+		except KeyError:
+			if self._was_optimistic:
+				raise OptimisticRetryError(key)
+			raise
+
+	def is_canonical(self) -> bool:
+		if not self._optimistic:
+			return False
+		# check that the stream has no remaining blocks
+		try:
+			next(self._car_iter)
+			return False
+		except StopIteration:
+			return True
+
+	def put_block(self, key: bytes, value: bytes) -> None:
+		raise NotImplementedError
+
+	def del_block(self, key: bytes) -> None:
+		raise NotImplementedError
+
+
 class CarStreamReader:
 	"""
 	Rather than pre-indexing the block offsets, this lets you iterate over the k/v pairs

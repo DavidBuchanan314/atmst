@@ -6,12 +6,11 @@ from typing import Tuple, BinaryIO
 
 from cbrrr import encode_dag_cbor, decode_dag_cbor, CID
 
-from .blockstore.car_file import ReadOnlyCARBlockStore, encode_varint, CarStreamReader
+from .blockstore.car_file import ReadOnlyCARBlockStore, encode_varint, CarStreamReader, OpportunisticStreamingCarBlockStore, OptimisticRetryError
 from .blockstore import OverlayBlockStore
 from .mst.node_store import NodeStore
 from .mst.node_walker import NodeWalker
 from .mst.diff import mst_diff, record_diff
-from .mst.node import MSTNode
 
 
 def prettify_record(record) -> str:
@@ -110,48 +109,28 @@ def print_record_diff(car_a: str, car_b: str):
 	for delta in record_diff(ns, mst_created, mst_deleted):
 		print(delta)
 
-def verify_car_streaming(carstream: CarStreamReader):
-	blocks = {} # for a preorder-traversal-ordered CAR, this never grows beyond 0
-	optimistic = [True]
-	car_iter = iter(carstream)
-	def lazy_get(key: CID) -> bytes:
-		print("len", len(blocks))
-		if optimistic[0]:
-			try:
-				k, v = next(car_iter)
-			except StopIteration:
-				raise ValueError(f"lookup failed for {key}")
-			if k == key:
-				return v
-			# if we reached here the CAR is not canonically ordered
-			optimistic[0] = False
-			blocks[k] = v
-			for k, v in car_iter: # slurp the entire rest of CAR into RAM
-				blocks[k] = v
-			# fall thru
-		return blocks[key] # TODO: reopen input and re-slurp if this fails
-	commit = decode_dag_cbor(lazy_get(carstream.car_root))
+def verify_car_streaming(carstream: CarStreamReader, optimistic: bool=True):
+	bs = OpportunisticStreamingCarBlockStore(carstream, optimistic=optimistic)
+	commit = decode_dag_cbor(bs.get_block(bytes(bs.car_root)))
 	assert isinstance(commit, dict)
-	root_cid = commit["data"]
-	assert isinstance(root_cid, CID)
-	def verify_mst(node_cid: CID):
-		node = MSTNode.deserialise(lazy_get(node_cid))
-		if node.subtrees[0] is not None:
-			verify_mst(node.subtrees[0])
-		for k, v, subtree in zip(node.keys, node.vals, node.subtrees[1:]):
-			print(k)
-			rv = lazy_get(v)
-			print(k, len(rv))
-			if subtree is not None:
-				verify_mst(subtree)
-
-	verify_mst(root_cid)
-	print(carstream.file.tell()) # should be at EOF now
+	root = commit["data"]
+	assert isinstance(root, CID)
+	ns = NodeStore(bs)
+	count = 0
+	for k, v in NodeWalker(ns, root).iter_kv():
+		bs.get_block(bytes(v)) # force-read every record block
+		count += 1
+	print(f"Verified {count} records (assuming commit signature is valid)")
+	print("canonical:", bs.is_canonical())
 
 def verify_car(car_path: str):
-	with open(car_path, "rb") as carfile:
-		carstream = CarStreamReader(carfile)
-		verify_car_streaming(carstream)
+	try:
+		with open(car_path, "rb") as carfile:
+			verify_car_streaming(CarStreamReader(carfile))
+	except OptimisticRetryError:
+		print("Optimistic streaming failed, retrying with full buffering...")
+		with open(car_path, "rb") as carfile:
+			verify_car_streaming(CarStreamReader(carfile), optimistic=False)
 
 COMMANDS = {
 	"info": (print_info, "print CAR header and repo info"),
